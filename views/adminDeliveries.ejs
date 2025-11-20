@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel='stylesheet' href='/css/styles.css'>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <title>Deliveries | Supermarket App</title>
+</head>
+<body>
+        <nav class="topbar shadow-sm">
+    <div class="container d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <a class="brand-mark" href="/">SM</a>
+        <span class="fw-semibold">Supermarket</span>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+        <% if (user && user.role !== "admin") { %>
+          <a class="nav-chip" href="/orders/history">Orders</a>
+        <% } %>
+        <% if (user && user.role === "admin") { %>
+          <a class="nav-chip" href="/inventory">Inventory</a>
+          <a class="nav-chip" href="/admin/users">Users</a>
+          <a class="nav-chip" href="/admin/deliveries">Deliveries</a>
+        <% } %>
+        <a class="btn btn-primary" href="/logout">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="page-section">
+    <div class="container">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+          <p class="mb-1 text-muted">Administrator dashboard</p>
+          <h2 class="mb-0">Delivery overview</h2>
+        </div>
+        <span class="badge bg-light text-dark px-3 py-2">Open orders: <strong><%= orders ? orders.length : 0 %></strong></span>
+      </div>
+
+      <% if (messages && messages.length) { %>
+        <% messages.forEach(function(message) { %>
+          <div class="alert alert-success"><%= message %></div>
+        <% }); %>
+      <% } %>
+
+      <% if (errors && errors.length) { %>
+        <% errors.forEach(function(error) { %>
+          <div class="alert alert-danger"><%= error %></div>
+        <% }); %>
+      <% } %>
+
+      <% if (!orders || !orders.length) { %>
+        <div class="empty-state">
+          <h3>No deliveries yet</h3>
+          <p class="text-muted">Orders will appear here once shoppers check out with delivery or pickup instructions.</p>
+        </div>
+      <% } else { %>
+        <div class="accordion" id="admin-deliveries">
+          <% orders.forEach(function(order, index) { %>
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="delivery-heading-<%= order.id %>">
+                <button class="accordion-button <%= index === 0 ? '' : 'collapsed' %>" type="button" data-bs-toggle="collapse" data-bs-target="#delivery-<%= order.id %>" aria-expanded="<%= index === 0 ? 'true' : 'false' %>" aria-controls="delivery-<%= order.id %>">
+                  <div class="w-100 d-flex flex-column flex-md-row align-items-md-center justify-content-between">
+                    <div>
+                      <span class="me-2 fw-semibold">Order #<%= order.id %></span>
+                      <span class="text-muted small"><%= new Date(order.created_at).toLocaleString() %></span>
+                    </div>
+                    <div class="d-flex flex-column flex-md-row align-items-md-center gap-2 mt-2 mt-md-0">
+                      <span class="badge <%= order.delivery_method === 'delivery' ? 'bg-primary-subtle text-primary' : 'bg-light text-dark' %> text-uppercase">
+                        <%= order.delivery_method === 'delivery' ? 'Delivery' : 'Pickup' %>
+                      </span>
+                      <span class="badge bg-dark-subtle text-dark">Total: $<%= Number(order.total).toFixed(2) %></span>
+                    </div>
+                  </div>
+                </button>
+              </h2>
+              <div id="delivery-<%= order.id %>" class="accordion-collapse collapse <%= index === 0 ? 'show' : '' %>" aria-labelledby="delivery-heading-<%= order.id %>" data-bs-parent="#admin-deliveries">
+                <div class="accordion-body">
+                  <div class="row g-4">
+                    <div class="col-12 col-lg-4">
+                      <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                          <h5 class="card-title mb-1"><%= order.username %></h5>
+                          <p class="text-muted small mb-3"><%= order.email %> Â· <%= order.contact %></p>
+                          <p class="mb-2"><strong>Saved address:</strong><br><span class="text-muted"><%= order.account_address %></span></p>
+                          <p class="mb-0">
+                            <span class="badge <%= order.free_delivery ? 'bg-success-subtle text-success' : 'bg-light text-muted' %>">
+                              <%= order.free_delivery ? 'Free delivery user' : 'Standard delivery' %>
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-12 col-lg-8">
+                      <div class="card shadow-sm mb-3">
+                        <div class="card-body">
+                          <h5 class="card-title">Items</h5>
+                          <% const items = orderItems[order.id] || []; %>
+                          <% if (items.length) { %>
+                            <div class="table-responsive">
+                              <table class="table align-middle mb-0">
+                                <thead>
+                                  <tr>
+                                    <th scope="col">Product</th>
+                                    <th scope="col" class="text-center">Qty</th>
+                                    <th scope="col" class="text-end">Price</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <% items.forEach(function(item) { %>
+                                    <tr>
+                                      <td><%= item.productName %></td>
+                                      <td class="text-center"><%= item.quantity %></td>
+                                      <td class="text-end">$<%= Number(item.price).toFixed(2) %></td>
+                                    </tr>
+                                  <% }); %>
+                                </tbody>
+                              </table>
+                            </div>
+                          <% } else { %>
+                            <p class="text-muted mb-0">No line items recorded.</p>
+                          <% } %>
+                        </div>
+                      </div>
+
+                      <div class="card shadow-sm">
+                        <div class="card-body">
+                          <h5 class="card-title mb-3">Delivery management</h5>
+                          <form action="/orders/<%= order.id %>/delivery" method="POST" class="row gy-3">
+                            <div class="col-12 col-md-4">
+                              <label class="form-label">Method</label>
+                              <select name="deliveryMethod" class="form-select">
+                                <option value="pickup" <%= order.delivery_method === 'pickup' ? 'selected' : '' %>>Pickup</option>
+                                <option value="delivery" <%= order.delivery_method === 'delivery' ? 'selected' : '' %>>Delivery</option>
+                              </select>
+                            </div>
+                            <div class="col-12 col-md-8">
+                              <label for="admin-delivery-address-<%= order.id %>" class="form-label">Delivery address</label>
+                              <textarea
+                                class="form-control"
+                                id="admin-delivery-address-<%= order.id %>"
+                                name="deliveryAddress"
+                                rows="2"
+                                placeholder="Enter delivery details"><%= order.delivery_address || order.account_address || '' %></textarea>
+                              <small class="text-muted">Only required when delivery is selected.</small>
+                            </div>
+                            <div class="col-12">
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="waive-fee-<%= order.id %>" name="waiveFee" <%= Number(order.delivery_fee || 0) === 0 ? 'checked' : '' %>>
+                                <label class="form-check-label" for="waive-fee-<%= order.id %>">Waive the $1.50 delivery fee for this order</label>
+                              </div>
+                              <small class="text-muted">
+                                Current fee: <%= Number(order.delivery_fee || 0) > 0 ? '$' + Number(order.delivery_fee).toFixed(2) : 'Free' %>
+                              </small>
+                            </div>
+                            <div class="col-12 d-flex justify-content-end gap-2">
+                              <button type="submit" class="btn btn-outline-primary">Save changes</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <small>&copy; <%= new Date().getFullYear() %> Supermarket App</small>
+    </div>
+  </footer>
+</body>
+</html>
+
+
+
+
+
+

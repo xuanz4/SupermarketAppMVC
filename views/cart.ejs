@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel='stylesheet' href='/css/styles.css'>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <title>Your Cart | Supermarket</title>
+</head>
+<body class="bg-surface">
+        <nav class="topbar shadow-sm">
+    <div class="container d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <a class="brand-mark" href="/">SM</a>
+        <span class="fw-semibold">Supermarket</span>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+        <% if (user && user.role !== "admin") { %>
+          <a class="nav-chip" href="/orders/history">Orders</a>
+        <% } %>
+        <% if (user && user.role === "admin") { %>
+          <a class="nav-chip" href="/inventory">Inventory</a>
+          <a class="nav-chip" href="/admin/users">Users</a>
+          <a class="nav-chip" href="/admin/deliveries">Deliveries</a>
+        <% } %>
+        <a class="btn btn-primary" href="/logout">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page-section">
+    <div class="container">
+      <% if (messages && messages.length) { %>
+        <% messages.forEach(function(message) { %>
+          <div class="alert alert-success mb-3"><%= message %></div>
+        <% }); %>
+      <% } %>
+
+      <% if (errors && errors.length) { %>
+        <% errors.forEach(function(error) { %>
+          <div class="alert alert-danger mb-3"><%= error %></div>
+        <% }); %>
+      <% } %>
+
+      <% if (cart.length === 0) { %>
+        <div class="empty-state">
+          <h3>Your cart is empty</h3>
+          <p class="text-muted">Browse our catalogue and add items to see them here.</p>
+          <a href="/shopping" class="btn btn-primary">Start shopping</a>
+        </div>
+      <% } else { %>
+        <div class="row g-4">
+          <div class="col-12 col-xl-8">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <h5 class="mb-0 text-navy">Items</h5>
+              <span class="pill-soft"><%= cart.length %> products</span>
+            </div>
+            <div class="d-flex flex-column gap-3">
+              <% let total = 0; %>
+              <% let totalSavings = 0; %>
+              <% cart.forEach(function(item) { %>
+                <% total += item.price * item.quantity; %>
+                <% if (item.hasDiscount) { totalSavings += (item.originalPrice - item.price) * item.quantity; } %>
+                <div class="card border-0 shadow-sm">
+                  <div class="card-body d-flex flex-column flex-md-row gap-3 align-items-start">
+                    <% if (item.image) { %>
+                      <img src="/images/<%= item.image %>" class="rounded" alt="<%= item.productName %>" style="width: 120px; height: 120px; object-fit: cover;">
+                    <% } else { %>
+                      <div class="placeholder-img" style="width: 120px; height: 120px;">No image</div>
+                    <% } %>
+                    <div class="flex-grow-1 w-100">
+                      <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                          <h6 class="mb-1"><%= item.productName %></h6>
+                          <% if (item.offerMessage) { %>
+                            <span class="deal-flag">Offer</span>
+                          <% } %>
+                        </div>
+                        <span class="pill-soft">$<%= (item.price * item.quantity).toFixed(2) %></span>
+                      </div>
+
+                      <% if (item.hasDiscount) { %>
+                        <p class="mb-2">
+                          <span class="text-muted text-decoration-line-through small">$<%= Number(item.originalPrice).toFixed(2) %></span>
+                          <span class="text-success fw-semibold ms-2">$<%= Number(item.price).toFixed(2) %></span>
+                          <span class="deal-flag ms-2">Save <%= Number(item.discountPercentage).toFixed(0) %>%</span>
+                        </p>
+                      <% } else { %>
+                        <p class="mb-2 fw-semibold">$<%= Number(item.price).toFixed(2) %></p>
+                      <% } %>
+
+                      <% if (item.offerMessage) { %>
+                        <div class="alert alert-info py-2 mb-3">
+                          <div class="small mb-0"><%= item.offerMessage %></div>
+                        </div>
+                      <% } %>
+
+                      <div class="d-flex flex-wrap gap-2">
+                        <form action="/cart/update/<%= item.productId %>" method="POST" class="d-flex align-items-center gap-2">
+                          <label for="cart-quantity-<%= item.productId %>" class="form-label mb-0 small text-muted text-uppercase">Qty</label>
+                          <div class="input-group" style="max-width: 190px;">
+                            <button class="btn btn-outline-secondary" type="button" onclick="stepQty('cart-quantity-<%= item.productId %>', -1)">-</button>
+                            <input type="number" id="cart-quantity-<%= item.productId %>" name="quantity" class="form-control text-center" min="1" value="<%= item.quantity %>" required>
+                            <button class="btn btn-outline-secondary" type="button" onclick="stepQty('cart-quantity-<%= item.productId %>', 1)">+</button>
+                          </div>
+                          <button type="submit" class="btn btn-primary">Update</button>
+                        </form>
+                        <form action="/cart/remove/<%= item.productId %>" method="POST">
+                          <button type="submit" class="btn btn-outline-danger">Remove</button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+
+          <div class="col-12 col-xl-4">
+            <div class="card summary-card summary-sticky">
+              <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                  <span class="text-muted">Items</span>
+                  <span class="fw-semibold">$<%= total.toFixed(2) %></span>
+                </div>
+                <% if (totalSavings > 0) { %>
+                  <div class="d-flex justify-content-between mb-2 text-success">
+                    <span>Savings</span>
+                    <span>- $<%= totalSavings.toFixed(2) %></span>
+                  </div>
+                <% } %>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <span class="text-muted">Delivery</span>
+                  <% if (user && user.free_delivery) { %>
+                    <span class="pill-soft">Free</span>
+                  <% } else { %>
+                    <span class="pill-soft">+$1.50</span>
+                  <% } %>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Delivery preference</label>
+                  <div class="d-flex flex-wrap gap-2">
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="deliveryMethod" id="delivery-pickup" value="pickup" form="checkout-form" checked>
+                      <label class="form-check-label" for="delivery-pickup">Pickup</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="deliveryMethod" id="delivery-shipping" value="delivery" form="checkout-form">
+                      <label class="form-check-label" for="delivery-shipping">Deliver</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mb-3 d-none" id="delivery-address-group">
+                  <label for="deliveryAddress" class="form-label">Delivery address</label>
+                  <textarea class="form-control" id="deliveryAddress" name="deliveryAddress" rows="2" placeholder="Enter delivery address" form="checkout-form"><%= user && user.address ? user.address : '' %></textarea>
+                </div>
+
+                <div class="alert <%= user && user.free_delivery ? 'alert-success' : 'alert-info' %> py-2">
+                  <% if (user && user.free_delivery) { %>
+                    <strong>Free delivery unlocked!</strong>
+                  <% } else { %>
+                    Delivery adds a flat $1.50 if selected.
+                  <% } %>
+                </div>
+
+                <form id="checkout-form" action="/checkout" method="POST">
+                  <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-success btn-lg">Checkout</button>
+                  </div>
+                </form>
+              </div>
+              <% if (totalSavings > 0) { %>
+                <div class="card-footer text-success fw-semibold">
+                  You are saving $<%= totalSavings.toFixed(2) %> on this order.
+                </div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      <% } %>
+    </div>
+  </main>
+
+  <script>
+    function stepQty(id, delta) {
+      var input = document.getElementById(id);
+      if (!input) return;
+      var next = Math.max(1, parseInt(input.value || '1', 10) + delta);
+      input.value = next;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var deliveryRadios = document.querySelectorAll('input[name="deliveryMethod"]');
+      var addressGroup = document.getElementById('delivery-address-group');
+      if (!addressGroup) return;
+      var toggleAddress = function () {
+        var selected = document.querySelector('input[name="deliveryMethod"]:checked');
+        if (selected && selected.value === 'delivery') {
+          addressGroup.classList.remove('d-none');
+        } else {
+          addressGroup.classList.add('d-none');
+        }
+      };
+      deliveryRadios.forEach(function (radio) { radio.addEventListener('change', toggleAddress); });
+      toggleAddress();
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+

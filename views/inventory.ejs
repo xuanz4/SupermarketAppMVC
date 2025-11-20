@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel='stylesheet' href='/css/styles.css'>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <title>Inventory | Supermarket</title>
+</head>
+<body class="bg-surface">
+        <nav class="topbar shadow-sm">
+    <div class="container d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <a class="brand-mark" href="/">SM</a>
+        <span class="fw-semibold">Supermarket</span>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+        <% if (user && user.role !== "admin") { %>
+          <a class="nav-chip" href="/orders/history">Orders</a>
+        <% } %>
+        <% if (user && user.role === "admin") { %>
+          <a class="nav-chip" href="/inventory">Inventory</a>
+          <a class="nav-chip" href="/admin/users">Users</a>
+          <a class="nav-chip" href="/admin/deliveries">Deliveries</a>
+        <% } %>
+        <a class="btn btn-primary" href="/logout">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page-section">
+    <div class="container">
+      <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-3">
+            <div>
+              <p class="text-muted small mb-1">Signed in as</p>
+              <h5 class="mb-0"><%= user.username %> <span class="badge bg-primary text-uppercase ms-2"><%= user.role %></span></h5>
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <span class="pill-soft">Total products: <strong><%= products.length %></strong></span>
+              <a href="/addProduct" class="btn btn-secondary">+ Add product</a>
+            </div>
+          </div>
+
+          <form class="row g-3 align-items-end" method="GET" action="/inventory">
+            <div class="col-12 col-md-4">
+              <label class="form-label text-muted small text-uppercase mb-1">Search</label>
+              <input type="text" name="search" value="<%= searchTerm || '' %>" class="form-control" placeholder="e.g. cereal, milk">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label text-muted small text-uppercase mb-1">Category</label>
+              <select name="category" class="form-select">
+                <option value="">All</option>
+                <% (categories || []).forEach(function(cat) { %>
+                  <option value="<%= cat %>" <%= activeCategory === cat ? 'selected' : '' %>><%= cat %></option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label text-muted small text-uppercase mb-1">Sort</label>
+              <select name="sort" class="form-select">
+                <option value="stock_asc" <%= sort === 'stock_asc' ? 'selected' : '' %>>Stock: Low to High</option>
+                <option value="stock_desc" <%= sort === 'stock_desc' ? 'selected' : '' %>>Stock: High to Low</option>
+                <option value="price_asc" <%= sort === 'price_asc' ? 'selected' : '' %>>Price: Low to High</option>
+                <option value="price_desc" <%= sort === 'price_desc' ? 'selected' : '' %>>Price: High to Low</option>
+                <option value="newest" <%= sort === 'newest' ? 'selected' : '' %>>Newest first</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-2">
+              <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" value="1" id="lowStock" name="lowStock" <%= lowStockOnly ? 'checked' : '' %>>
+                <label class="form-check-label" for="lowStock">Low stock</label>
+              </div>
+            </div>
+            <div class="col-12 d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Apply filters</button>
+              <a href="/inventory" class="btn btn-soft">Reset</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <% if (messages && messages.length) { %>
+        <% messages.forEach(function(message) { %>
+          <div class="alert alert-success"><%= message %></div>
+        <% }); %>
+      <% } %>
+
+      <% if (errors && errors.length) { %>
+        <% errors.forEach(function(error) { %>
+          <div class="alert alert-danger"><%= error %></div>
+        <% }); %>
+      <% } %>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="text-uppercase small text-muted">
+                <tr>
+                  <th>Product</th>
+                  <th>Category</th>
+                  <th>Image</th>
+                  <th>Quantity</th>
+                  <th>Price</th>
+                  <th>Offer</th>
+                  <th class="text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (products && products.length) { %>
+                  <% products.forEach(function(product) { %>
+                    <tr class="<%= product.quantity <= 5 ? 'table-warning' : '' %>">
+                      <td class="fw-semibold"><a href="/product/<%= product.id %>" class="text-decoration-none text-dark"><%= product.productName %></a></td>
+                      <td><span class="badge bg-light text-dark"><%= product.category || 'General' %></span></td>
+                      <td>
+                        <% if (product.image) { %>
+                          <img src="/images/<%= product.image %>" alt="<%= product.productName %>" class="img-thumbnail" style="width: 70px; height: 70px; object-fit: cover;">
+                        <% } else { %>
+                          <span class="text-muted">No image</span>
+                        <% } %>
+                      </td>
+                      <td>
+                        <span class="pill-soft <%= product.quantity <= 5 ? 'text-warning' : '' %>">Qty <%= product.quantity %></span>
+                      </td>
+                      <td>
+                        <% if (product.hasDiscount) { %>
+                          <div class="d-flex flex-column">
+                            <span class="text-muted text-decoration-line-through small">$<%= Number(product.price).toFixed(2) %></span>
+                            <span class="fw-semibold">$<%= Number(product.effectivePrice).toFixed(2) %></span>
+                            <span class="deal-flag d-inline-block mt-1">Save <%= Number(product.discountPercentage).toFixed(0) %>%</span>
+                          </div>
+                        <% } else { %>
+                          $<%= Number(product.price).toFixed(2) %>
+                        <% } %>
+                      </td>
+                      <td>
+                        <% if (product.offerMessage) { %>
+                          <span class="text-muted"><%= product.offerMessage %></span>
+                        <% } else { %>
+                          <span class="text-muted">-</span>
+                        <% } %>
+                      </td>
+                      <td class="text-center">
+                        <div class="d-flex justify-content-center gap-2">
+                          <a href="/updateProduct/<%= product.id %>" class="btn btn-outline-primary btn-sm">Edit</a>
+                          <a href="/deleteProduct/<%= product.id %>" class="btn btn-outline-danger btn-sm" onclick="return confirm('Delete this product?')">Delete</a>
+                        </div>
+                      </td>
+                    </tr>
+                  <% }); %>
+                <% } else { %>
+                  <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">No products match your filters.</td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
+
+
+
+
+
