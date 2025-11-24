@@ -1,0 +1,23 @@
+<nav class="topbar shadow-sm">
+  <div class="container d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-3">
+      <a class="brand-mark" href="/">SM</a>
+      <span class="fw-semibold">Supermarket</span>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+      <% if (user && user.role !== "admin") { %>
+        <a class="nav-chip" href="/orders/history">Orders</a>
+      <% } %>
+      <% if (user && user.role === "admin") { %>
+        <a class="nav-chip" href="/inventory">Inventory</a>
+        <a class="nav-chip" href="/admin/users">Users</a>
+        <a class="nav-chip" href="/admin/deliveries">Deliveries</a>
+      <% } %>
+      <% if (user) { %>
+        <a class="btn btn-primary" href="/logout">Logout</a>
+      <% } else { %>
+        <a class="btn btn-primary" href="/login">Login</a>
+      <% } %>
+    </div>
+  </div>
+</nav>
