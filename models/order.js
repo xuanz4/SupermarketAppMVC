@@ -126,7 +126,7 @@ const create = (userId, cartItems, options, callback) => {
  */
 const findByUser = (userId, callback) => {
     const sql = `
-        SELECT id, total, created_at, delivery_method, delivery_address, delivery_fee
+        SELECT id, total, created_at, delivery_method, delivery_address, delivery_fee, status
         FROM orders
         WHERE user_id = ?
         ORDER BY created_at DESC, id DESC
@@ -136,7 +136,7 @@ const findByUser = (userId, callback) => {
 
 const findById = (orderId, callback) => {
     const sql = `
-        SELECT id, user_id, total, created_at, delivery_method, delivery_address, delivery_fee
+        SELECT id, user_id, total, created_at, delivery_method, delivery_address, delivery_fee, status
         FROM orders
         WHERE id = ?
         LIMIT 1
@@ -152,8 +152,7 @@ const findAllWithUsers = (callback) => {
             o.created_at,
             o.delivery_method,
             o.delivery_address,
-            o.delivery_fee,
-            u.username,
+            o.delivery_fee,\n            o.status,\n            u.username,
             u.email,
             u.contact,
             u.address AS account_address,
@@ -214,18 +213,34 @@ const updateDelivery = (orderId, deliveryData, callback) => {
     const {
         deliveryMethod = 'pickup',
         deliveryAddress = null,
-        deliveryFee = 0
+        deliveryFee = 0,
+        status = null
     } = deliveryData || {};
 
     const safeFee = Number.isFinite(deliveryFee) && deliveryFee > 0
         ? Number(deliveryFee.toFixed(2))
         : 0;
+    const fields = [
+        'delivery_method = ?',
+        'delivery_address = ?',
+        'delivery_fee = ?',
+        'total = total - delivery_fee + ?'
+    ];
+    const params = [deliveryMethod, deliveryAddress, safeFee, safeFee];
+
+    if (status) {
+        fields.push('status = ?');
+        params.push(status);
+    }
+
+    params.push(orderId);
+
     const sql = `
         UPDATE orders
-        SET delivery_method = ?, delivery_address = ?, delivery_fee = ?, total = total - delivery_fee + ?
+        SET ${fields.join(', ')}
         WHERE id = ?
     `;
-    connection.query(sql, [deliveryMethod, deliveryAddress, safeFee, safeFee, orderId], callback);
+    connection.query(sql, params, callback);
 };
 
 module.exports = {
@@ -237,3 +252,4 @@ module.exports = {
     getBestSellers,
     updateDelivery
 };
+

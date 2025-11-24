@@ -2,6 +2,7 @@ const Order = require('../models/order');
 const User = require('../models/user');
 
 const DELIVERY_FEE = 1.5;
+const ALLOWED_STATUSES = ['processing', 'dispatched', 'delivered'];
 
 const ensureCart = (req) => {
     if (!req.session.cart) {
@@ -134,7 +135,8 @@ const history = (req, res) => {
             ...order,
             delivery_method: order.delivery_method || 'pickup',
             delivery_address: order.delivery_address,
-            delivery_fee: Number(order.delivery_fee || 0)
+            delivery_fee: Number(order.delivery_fee || 0),
+            status: order.status || 'processing'
         }));
         const orderIds = orders.map(order => order.id);
 
@@ -257,6 +259,7 @@ const updateDeliveryDetails = (req, res) => {
             const requestedAddress = sanitiseDeliveryAddress(req.body.deliveryAddress) || (account ? account.address : null);
             const waiveFee = isAdmin && (req.body.waiveFee === 'on' || req.body.waiveFee === 'true');
             const deliveryFee = computeDeliveryFee(account, deliveryMethod, waiveFee);
+            const status = isAdmin && ALLOWED_STATUSES.includes(req.body.status) ? req.body.status : (order.status || 'processing');
             const redirectPath = isAdmin ? '/admin/deliveries' : '/orders/history';
 
             if (deliveryMethod === 'delivery' && !requestedAddress) {
@@ -267,7 +270,8 @@ const updateDeliveryDetails = (req, res) => {
             Order.updateDelivery(orderId, {
                 deliveryMethod,
                 deliveryAddress: deliveryMethod === 'delivery' ? requestedAddress : null,
-                deliveryFee
+                deliveryFee,
+                status
             }, (updateErr) => {
                 if (updateErr) {
                     console.error('Error updating delivery details:', updateErr);
@@ -292,3 +296,5 @@ module.exports = {
     listAllDeliveries,
     updateDeliveryDetails
 };
+
+

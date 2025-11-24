@@ -7,6 +7,7 @@
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
       <% if (user && user.role !== "admin") { %>
         <a class="nav-chip" href="/orders/history">Orders</a>
+        <a class="nav-chip" href="/cart">Cart</a>
       <% } %>
       <% if (user && user.role === "admin") { %>
         <a class="nav-chip" href="/inventory">Inventory</a>
@@ -21,3 +22,4 @@
     </div>
   </div>
 </nav>
+
