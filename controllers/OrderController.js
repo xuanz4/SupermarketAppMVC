@@ -113,13 +113,13 @@ const showCheckout = (req, res) => {
 };
 
 /**
- * Handle checkout and order creation.
+ * Handle checkout form submission and move to payment screen.
  */
-const checkout = (req, res) => {
+const startPayment = (req, res) => {
     ensureCart(req);
 
     if (!req.session.user || req.session.user.role !== 'user') {
-        req.flash('error', 'Only shoppers can complete checkout.');
+        req.flash('error', 'Only shoppers can proceed to payment.');
         return res.redirect('/cart');
     }
 
@@ -136,10 +136,101 @@ const checkout = (req, res) => {
 
     if (deliveryMethod === 'delivery' && !deliveryAddress) {
         req.flash('error', 'Please provide a delivery address.');
-        return res.redirect('/cart');
+        return res.redirect('/checkout');
     }
 
     const deliveryFee = computeDeliveryFee(req.session.user, deliveryMethod);
+
+    req.session.pendingCheckout = {
+        deliveryMethod,
+        deliveryAddress,
+        deliveryFee,
+        fullName: (req.body.fullName || '').trim(),
+        email: (req.body.email || '').trim(),
+        contact: (req.body.contact || '').trim()
+    };
+
+    return res.redirect('/payment');
+};
+
+/**
+ * Show payment page with order summary.
+ */
+const showPayment = (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        req.flash('error', 'Only shoppers can make payments.');
+        return res.redirect('/cart');
+    }
+
+    const pending = req.session.pendingCheckout;
+    if (!pending) {
+        req.flash('error', 'Please confirm delivery details first.');
+        return res.redirect('/checkout');
+    }
+
+    const cartItems = req.session.cart || [];
+    if (!cartItems.length) {
+        req.flash('error', 'Your cart is empty.');
+        return res.redirect('/cart');
+    }
+
+    const itemsTotal = cartItems.reduce((sum, item) => {
+        const unitPrice = Number(item.price);
+        const quantity = Number(item.quantity);
+        if (!Number.isFinite(unitPrice) || !Number.isFinite(quantity)) {
+            return sum;
+        }
+        return sum + (unitPrice * quantity);
+    }, 0);
+
+    const decoratedCart = cartItems.map((item) => ({
+        ...item,
+        lineTotal: Number((Number(item.price) * Number(item.quantity)).toFixed(2))
+    }));
+
+    res.render('payment', {
+        user: req.session.user,
+        cart: decoratedCart,
+        itemsTotal: Number(itemsTotal.toFixed(2)),
+        deliveryFee: Number(pending.deliveryFee || 0),
+        pending,
+        totalWithFees: Number((itemsTotal + (Number(pending.deliveryFee || 0))).toFixed(2)),
+        messages: req.flash('success'),
+        errors: req.flash('error')
+    });
+};
+
+/**
+ * Handle payment confirmation and order creation.
+ */
+const checkout = (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        req.flash('error', 'Only shoppers can complete checkout.');
+        return res.redirect('/cart');
+    }
+
+    const cartItems = req.session.cart;
+
+    if (!cartItems.length) {
+        req.flash('error', 'Your cart is empty.');
+        return res.redirect('/cart');
+    }
+
+    const pending = req.session.pendingCheckout;
+    const deliveryMethod = pending ? pending.deliveryMethod : (req.body.deliveryMethod === 'delivery' ? 'delivery' : 'pickup');
+    const providedAddress = pending ? pending.deliveryAddress : (sanitiseDeliveryAddress(req.body.deliveryAddress) || req.session.user.address);
+    const deliveryAddress = deliveryMethod === 'delivery' ? sanitiseDeliveryAddress(providedAddress) : null;
+
+    if (deliveryMethod === 'delivery' && !deliveryAddress) {
+        req.flash('error', 'Please provide a delivery address.');
+        return res.redirect('/payment');
+    }
+
+    const deliveryFee = pending ? Number(pending.deliveryFee || 0) : computeDeliveryFee(req.session.user, deliveryMethod);
 
     Order.create(req.session.user.id, cartItems, { deliveryMethod, deliveryAddress, deliveryFee }, (error) => {
         if (error) {
@@ -149,6 +240,7 @@ const checkout = (req, res) => {
         }
 
         req.session.cart = [];
+        req.session.pendingCheckout = null;
         req.flash('success', `Thanks for your purchase! ${deliveryMethod === 'delivery' ? 'We will deliver your order shortly.' : 'Pickup details will be shared soon.'}`);
         return res.redirect('/orders/history');
     });
@@ -366,6 +458,8 @@ const deleteOrder = (req, res) => {
 
 module.exports = {
     showCheckout,
+    startPayment,
+    showPayment,
     checkout,
     history,
     listAllDeliveries,

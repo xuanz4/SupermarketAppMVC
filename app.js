@@ -191,7 +191,9 @@ app.get('/cart', checkAuthenticated, checkRoles('user'), cartController.viewCart
 app.post('/cart/update/:id', checkAuthenticated, checkRoles('user'), cartController.updateCartItem);
 app.post('/cart/remove/:id', checkAuthenticated, checkRoles('user'), cartController.removeCartItem);
 app.get('/checkout', checkAuthenticated, checkRoles('user'), orderController.showCheckout);
-app.post('/checkout', checkAuthenticated, checkRoles('user'), orderController.checkout);
+app.post('/checkout', checkAuthenticated, checkRoles('user'), orderController.startPayment);
+app.get('/payment', checkAuthenticated, checkRoles('user'), orderController.showPayment);
+app.post('/payment/confirm', checkAuthenticated, checkRoles('user'), orderController.checkout);
 app.get('/orders/history', checkAuthenticated, checkRoles('user'), orderController.history);
 app.post('/orders/:id/delivery', checkAuthenticated, orderController.updateDeliveryDetails);
 app.post('/orders/:id/delete', checkAuthenticated, checkAdmin, orderController.deleteOrder);
