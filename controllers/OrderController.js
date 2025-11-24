@@ -69,6 +69,50 @@ const sanitiseDeliveryAddress = (address) => {
 };
 
 /**
+ * Show checkout form for delivery details.
+ */
+const showCheckout = (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        req.flash('error', 'Only shoppers can checkout.');
+        return res.redirect('/cart');
+    }
+
+    const cartItems = req.session.cart;
+
+    if (!cartItems.length) {
+        req.flash('error', 'Your cart is empty.');
+        return res.redirect('/cart');
+    }
+
+    const itemsTotal = cartItems.reduce((sum, item) => {
+        const unitPrice = Number(item.price);
+        const quantity = Number(item.quantity);
+        if (!Number.isFinite(unitPrice) || !Number.isFinite(quantity)) {
+            return sum;
+        }
+        return sum + (unitPrice * quantity);
+    }, 0);
+
+    const decoratedCart = cartItems.map((item) => ({
+        ...item,
+        lineTotal: Number((Number(item.price) * Number(item.quantity)).toFixed(2))
+    }));
+
+    res.render('checkout', {
+        user: req.session.user,
+        cart: decoratedCart,
+        itemsTotal: Number(itemsTotal.toFixed(2)),
+        deliveryFee: computeDeliveryFee(req.session.user, 'delivery'),
+        pickupEta: 'Ready in 15-25 mins',
+        deliveryEta: 'Arrives in 40-70 mins',
+        messages: req.flash('success'),
+        errors: req.flash('error')
+    });
+};
+
+/**
  * Handle checkout and order creation.
  */
 const checkout = (req, res) => {
@@ -256,10 +300,11 @@ const updateDeliveryDetails = (req, res) => {
 
             const account = userRows && userRows[0];
             const deliveryMethod = req.body.deliveryMethod === 'delivery' ? 'delivery' : 'pickup';
+            const statusInput = req.body.status;
             const requestedAddress = sanitiseDeliveryAddress(req.body.deliveryAddress) || (account ? account.address : null);
             const waiveFee = isAdmin && (req.body.waiveFee === 'on' || req.body.waiveFee === 'true');
             const deliveryFee = computeDeliveryFee(account, deliveryMethod, waiveFee);
-            const status = isAdmin && ALLOWED_STATUSES.includes(req.body.status) ? req.body.status : (order.status || 'processing');
+            const status = isAdmin && ALLOWED_STATUSES.includes(statusInput) ? statusInput : (order.status || 'processing');
             const redirectPath = isAdmin ? '/admin/deliveries' : '/orders/history';
 
             if (deliveryMethod === 'delivery' && !requestedAddress) {
@@ -290,11 +335,42 @@ const updateDeliveryDetails = (req, res) => {
     });
 };
 
+const deleteOrder = (req, res) => {
+    const orderId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(orderId)) {
+        req.flash('error', 'Invalid order selected.');
+        return res.redirect('/admin/deliveries');
+    }
+
+    if (!req.session.user || req.session.user.role !== 'admin') {
+        req.flash('error', 'Only admins can delete orders.');
+        return res.redirect('/orders/history');
+    }
+
+    Order.remove(orderId, (err, result) => {
+        if (err) {
+            console.error('Error deleting order:', err);
+            req.flash('error', 'Unable to delete order right now.');
+            return res.redirect('/admin/deliveries');
+        }
+
+        if (!result || result.affectedRows === 0) {
+            req.flash('error', 'Order not found or already removed.');
+            return res.redirect('/admin/deliveries');
+        }
+
+        req.flash('success', 'Order deleted.');
+        return res.redirect('/admin/deliveries');
+    });
+};
+
 module.exports = {
+    showCheckout,
     checkout,
     history,
     listAllDeliveries,
-    updateDeliveryDetails
+    updateDeliveryDetails,
+    deleteOrder
 };
 
 

@@ -209,6 +209,36 @@ const getBestSellers = (limit, callback) => {
     connection.query(sql, [safeLimit], callback);
 };
 
+/**
+ * Delete an order and its items inside a transaction.
+ * @param {number} orderId
+ * @param {Function} callback
+ */
+const remove = (orderId, callback) => {
+    connection.beginTransaction((startErr) => {
+        if (startErr) return callback(startErr);
+
+        connection.query('DELETE FROM order_items WHERE order_id = ?', [orderId], (itemsErr) => {
+            if (itemsErr) {
+                return connection.rollback(() => callback(itemsErr));
+            }
+
+            connection.query('DELETE FROM orders WHERE id = ?', [orderId], (orderErr, result) => {
+                if (orderErr) {
+                    return connection.rollback(() => callback(orderErr));
+                }
+
+                connection.commit((commitErr) => {
+                    if (commitErr) {
+                        return connection.rollback(() => callback(commitErr));
+                    }
+                    callback(null, result);
+                });
+            });
+        });
+    });
+};
+
 const updateDelivery = (orderId, deliveryData, callback) => {
     const {
         deliveryMethod = 'pickup',
@@ -250,6 +280,7 @@ module.exports = {
     findAllWithUsers,
     findItemsByOrderIds,
     getBestSellers,
+    remove,
     updateDelivery
 };
 

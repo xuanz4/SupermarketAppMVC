@@ -111,38 +111,17 @@
                   <% } %>
                 </div>
 
-                <div class="mb-3">
-                  <label class="form-label fw-semibold">Delivery preference</label>
-                  <div class="d-flex flex-wrap gap-2">
-                    <div class="form-check form-check-inline">
-                      <input class="form-check-input" type="radio" name="deliveryMethod" id="delivery-pickup" value="pickup" form="checkout-form" checked>
-                      <label class="form-check-label" for="delivery-pickup">Pickup</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                      <input class="form-check-input" type="radio" name="deliveryMethod" id="delivery-shipping" value="delivery" form="checkout-form">
-                      <label class="form-check-label" for="delivery-shipping">Deliver</label>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="mb-3 d-none" id="delivery-address-group">
-                  <label for="deliveryAddress" class="form-label">Delivery address</label>
-                  <textarea class="form-control" id="deliveryAddress" name="deliveryAddress" rows="2" placeholder="Enter delivery address" form="checkout-form"><%= user && user.address ? user.address : '' %></textarea>
-                </div>
-
                 <div class="alert <%= user && user.free_delivery ? 'alert-success' : 'alert-info' %> py-2">
                   <% if (user && user.free_delivery) { %>
                     <strong>Free delivery unlocked!</strong>
                   <% } else { %>
-                    Delivery adds a flat $1.50 if selected.
+                    Delivery adds a flat $1.50 at checkout.
                   <% } %>
                 </div>
 
-                <form id="checkout-form" action="/checkout" method="POST">
-                  <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-success btn-lg">Checkout</button>
-                  </div>
-                </form>
+                <div class="d-grid gap-2">
+                  <a class="btn btn-success btn-lg" href="/checkout">Checkout</a>
+                </div>
               </div>
               <% if (totalSavings > 0) { %>
                 <div class="card-footer text-success fw-semibold">
@@ -163,27 +142,5 @@
       var next = Math.max(1, parseInt(input.value || '1', 10) + delta);
       input.value = next;
     }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      var deliveryRadios = document.querySelectorAll('input[name="deliveryMethod"]');
-      var addressGroup = document.getElementById('delivery-address-group');
-      if (!addressGroup) return;
-      var toggleAddress = function () {
-        var selected = document.querySelector('input[name="deliveryMethod"]:checked');
-        if (selected && selected.value === 'delivery') {
-          addressGroup.classList.remove('d-none');
-        } else {
-          addressGroup.classList.add('d-none');
-        }
-      };
-      deliveryRadios.forEach(function (radio) { radio.addEventListener('change', toggleAddress); });
-      toggleAddress();
-    });
   </script>
 <%- include('partials/footer') %>
-
-
-
-
-
-

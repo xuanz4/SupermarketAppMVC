@@ -1,4 +1,4 @@
-<% const pageTitle = 'Deliveries | Supermarket App'; %>
+ï»¿<% const pageTitle = 'Deliveries | Supermarket App'; %>
 <%- include('partials/head') %>
 <%- include('partials/topbar') %>
 
@@ -76,7 +76,7 @@
                           <div class="card h-100 shadow-sm">
                             <div class="card-body">
                               <h5 class="card-title mb-1"><%= order.username %></h5>
-                              <p class="text-muted small mb-3"><%= order.email %> • <%= order.contact %></p>
+                              <p class="text-muted small mb-3"><%= order.email %> | <%= order.contact %></p>
                               <p class="mb-2"><strong>Saved address:</strong><br><span class="text-muted"><%= order.account_address %></span></p>
                               <p class="mb-0">
                                 <span class="badge <%= order.free_delivery ? 'bg-success-subtle text-success' : 'bg-light text-muted' %>">
@@ -150,7 +150,7 @@
                                 <div class="col-12">
                                   <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="waive-fee-<%= order.id %>" name="waiveFee" <%= Number(order.delivery_fee || 0) === 0 ? 'checked' : '' %>>
-                                    <label class="form-check-label" for="waive-fee-<%= order.id %>">Waive the .50 delivery fee for this order</label>
+                                    <label class="form-check-label" for="waive-fee-<%= order.id %>">Waive the 1.50 delivery fee for this order</label>
                                   </div>
                                   <small class="text-muted">
                                     Current fee: <%= Number(order.delivery_fee || 0) > 0 ? '$' + Number(order.delivery_fee).toFixed(2) : 'Free' %>
@@ -159,6 +159,11 @@
                                 <div class="col-12 d-flex justify-content-end gap-2">
                                   <button type="submit" class="btn btn-outline-primary">Save changes</button>
                                 </div>
+                              </form>
+                              <form action="/orders/<%= order.id %>/delete" method="POST" class="mt-2 d-flex justify-content-end">
+                                <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Delete order #<%= order.id %>? This cannot be undone.');">
+                                  Delete order
+                                </button>
                               </form>
                             </div>
                           </div>

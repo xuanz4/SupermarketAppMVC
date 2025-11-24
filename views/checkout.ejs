@@ -1,0 +1,153 @@
+<%- include('partials/head', { pageTitle: 'Checkout | Supermarket', bodyClass: 'bg-surface' }) %>
+<%- include('partials/topbar') %>
+
+<main class="page-section">
+  <div class="container">
+    <% if (messages && messages.length) { %>
+      <% messages.forEach(function(message) { %>
+        <div class="alert alert-success mb-3"><%= message %></div>
+      <% }); %>
+    <% } %>
+
+    <% if (errors && errors.length) { %>
+      <% errors.forEach(function(error) { %>
+        <div class="alert alert-danger mb-3"><%= error %></div>
+      <% }); %>
+    <% } %>
+
+    <div class="row g-4">
+      <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <h4 class="mb-3">Delivery details</h4>
+            <form id="checkout-form" action="/checkout" method="POST" class="d-flex flex-column gap-3">
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label">Full name</label>
+                  <input type="text" name="fullName" class="form-control" placeholder="Your name" value="<%= user && user.username ? user.username : '' %>" required>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label">Email</label>
+                  <input type="email" name="email" class="form-control" placeholder="you@example.com" value="<%= user && user.email ? user.email : '' %>" required>
+                  <div class="form-text">We’ll send your receipt here.</div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Phone number</label>
+                  <input type="tel" name="contact" class="form-control" placeholder="e.g. +65 8123 4567" value="<%= user && user.contact ? user.contact : '' %>" required>
+                  <div class="form-text">For pickup confirmations or delivery riders.</div>
+                </div>
+              </div>
+
+              <div>
+                <label class="form-label fw-semibold">Delivery preference</label>
+                <div class="d-flex flex-wrap gap-3">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="deliveryMethod" id="pref-pickup" value="pickup" checked>
+                    <label class="form-check-label" for="pref-pickup">Pickup (ready in <%= pickupEta %>)</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="deliveryMethod" id="pref-delivery" value="delivery">
+                    <label class="form-check-label" for="pref-delivery">Deliver to me (est. <%= deliveryEta %>)</label>
+                  </div>
+                </div>
+              </div>
+
+              <div id="address-fields" class="d-none">
+                <label for="deliveryAddress" class="form-label">Delivery address</label>
+                <textarea class="form-control" id="deliveryAddress" name="deliveryAddress" rows="3" placeholder="123 Sample St, #01-01, 123456"><%= user && user.address ? user.address : '' %></textarea>
+                <div class="form-text">Include block, street, unit, and postal code. Required for delivery.</div>
+              </div>
+
+              <div class="alert <%= user && user.free_delivery ? 'alert-success' : 'alert-info' %> mb-0">
+                <% if (user && user.free_delivery) { %>
+                  <strong>Free delivery unlocked.</strong> You will not be charged a fee.
+                <% } else { %>
+                  Delivery adds $<%= deliveryFee.toFixed(2) %>. Pickup has no fee.
+                <% } %>
+              </div>
+
+              <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-success btn-lg">Confirm order</button>
+                <a class="btn btn-outline-secondary" href="/cart">Back to cart</a>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="card summary-card shadow-sm">
+          <div class="card-body">
+            <h5 class="mb-3">Order summary</h5>
+            <div class="d-flex justify-content-between mb-2">
+              <span class="text-muted">Items</span>
+              <span class="fw-semibold">$<%= itemsTotal.toFixed(2) %></span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <span class="text-muted">Delivery fee</span>
+              <span id="delivery-fee" class="pill-soft">$0.00</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center border-top pt-3">
+              <span class="fw-semibold">Total</span>
+              <span id="order-total" class="fw-bold">$<%= itemsTotal.toFixed(2) %></span>
+            </div>
+          </div>
+          <div class="card-footer bg-light">
+            <div class="small text-muted">ETA updates with your selection.</div>
+          </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-3">
+          <div class="card-body">
+            <h6 class="mb-3">Items</h6>
+            <div class="d-flex flex-column gap-2">
+              <% cart.forEach(function(item) { %>
+                <div class="d-flex justify-content-between">
+                  <span><%= item.productName %> × <%= item.quantity %></span>
+                  <span class="fw-semibold">$<%= item.lineTotal.toFixed(2) %></span>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var methodInputs = document.querySelectorAll('input[name="deliveryMethod"]');
+    var addressFields = document.getElementById('address-fields');
+    var feeEl = document.getElementById('delivery-fee');
+    var totalEl = document.getElementById('order-total');
+    var baseTotal = parseFloat('<%= itemsTotal.toFixed(2) %>') || 0;
+    var deliveryFee = parseFloat('<%= deliveryFee.toFixed(2) %>') || 0;
+
+    var updateView = function () {
+      var selected = document.querySelector('input[name="deliveryMethod"]:checked');
+      var isDelivery = selected && selected.value === 'delivery';
+      if (addressFields) {
+        addressFields.classList.toggle('d-none', !isDelivery);
+        var addressInput = document.getElementById('deliveryAddress');
+        if (addressInput) {
+          addressInput.required = isDelivery;
+        }
+      }
+
+      var fee = isDelivery ? deliveryFee : 0;
+      if (feeEl) {
+        feeEl.textContent = '$' + fee.toFixed(2);
+      }
+      if (totalEl) {
+        totalEl.textContent = '$' + (baseTotal + fee).toFixed(2);
+      }
+    };
+
+    methodInputs.forEach(function (input) {
+      input.addEventListener('change', updateView);
+    });
+    updateView();
+  });
+</script>
+<%- include('partials/footer') %>

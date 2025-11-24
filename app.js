@@ -190,9 +190,11 @@ app.post('/add-to-cart/:id', checkAuthenticated, checkRoles('user'), cartControl
 app.get('/cart', checkAuthenticated, checkRoles('user'), cartController.viewCart);
 app.post('/cart/update/:id', checkAuthenticated, checkRoles('user'), cartController.updateCartItem);
 app.post('/cart/remove/:id', checkAuthenticated, checkRoles('user'), cartController.removeCartItem);
+app.get('/checkout', checkAuthenticated, checkRoles('user'), orderController.showCheckout);
 app.post('/checkout', checkAuthenticated, checkRoles('user'), orderController.checkout);
 app.get('/orders/history', checkAuthenticated, checkRoles('user'), orderController.history);
 app.post('/orders/:id/delivery', checkAuthenticated, orderController.updateDeliveryDetails);
+app.post('/orders/:id/delete', checkAuthenticated, checkAdmin, orderController.deleteOrder);
 
 app.get('/logout', userController.logout);
 
