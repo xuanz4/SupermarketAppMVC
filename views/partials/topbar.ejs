@@ -8,7 +8,14 @@
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
       <% if (user && user.role !== "admin") { %>
         <a class="nav-chip" href="/orders/history">Orders</a>
-        <a class="nav-chip" href="/cart">Cart</a>
+        <a class="nav-chip position-relative" href="/cart">
+          Cart
+          <% if (typeof cartCount !== 'undefined' && cartCount > 0) { %>
+            <span class="badge bg-danger position-absolute top-0 start-100 translate-middle rounded-pill">
+              <%= cartCount %>
+            </span>
+          <% } %>
+        </a>
       <% } %>
       <% if (user && user.role === "admin") { %>
         <a class="nav-chip" href="/inventory">Inventory</a>

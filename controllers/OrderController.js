@@ -1,5 +1,6 @@
 const Order = require('../models/order');
 const User = require('../models/user');
+const cartStore = require('../models/cartStorage');
 
 const DELIVERY_FEE = 1.5;
 const ALLOWED_STATUSES = ['processing', 'dispatched', 'delivered'];
@@ -251,6 +252,13 @@ const checkout = (req, res) => {
 
         req.session.cart = [];
         req.session.pendingCheckout = null;
+        if (req.session.user) {
+            cartStore.save(req.session.user.id, [], (clearErr) => {
+                if (clearErr) {
+                    console.error('Error clearing persisted cart after checkout:', clearErr);
+                }
+            });
+        }
         const paymentCopy = paymentMethod === 'paynow' ? 'Payment via PayNow recorded.' : (paymentMethod === 'cash' ? 'Cash on delivery/pickup selected.' : 'Card payment recorded.');
         req.flash('success', `Thanks for your purchase! ${paymentCopy} ${deliveryMethod === 'delivery' ? 'We will deliver your order shortly.' : 'Pickup details will be shared soon.'}`);
         return res.redirect('/orders/history');

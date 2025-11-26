@@ -43,55 +43,91 @@ const create = (userId, cartItems, options, callback) => {
             : 0;
         const finalTotal = Number((orderTotal + safeDeliveryFee).toFixed(2));
 
-        const orderSql = `
-            INSERT INTO orders (user_id, total, delivery_method, delivery_address, delivery_fee)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-        connection.query(orderSql, [userId, finalTotal, deliveryMethod, deliveryAddress, safeDeliveryFee], (orderError, orderResult) => {
-            if (orderError) {
-                return connection.rollback(() => callback(orderError));
+        const productIds = [...new Set(cartItems.map((item) => item.productId))];
+        const placeholders = productIds.map(() => '?').join(',');
+        const stockSql = `SELECT id, quantity FROM products WHERE id IN (${placeholders}) FOR UPDATE`;
+
+        connection.query(stockSql, productIds, (stockErr, stockRows) => {
+            if (stockErr) {
+                return connection.rollback(() => callback(stockErr));
             }
 
-            const orderId = orderResult.insertId;
+            const stockMap = new Map();
+            (stockRows || []).forEach((row) => {
+                stockMap.set(Number(row.id), Number(row.quantity));
+            });
 
-            const itemPromises = cartItems.map((item) => new Promise((resolve, reject) => {
-                const quantity = Number(item.quantity);
-                if (!Number.isFinite(quantity) || quantity <= 0) {
-                    return reject(new Error(`Invalid quantity detected for ${item.productName}.`));
+            for (const item of cartItems) {
+                const requested = Number(item.quantity);
+                const onHand = stockMap.has(Number(item.productId)) ? Number(stockMap.get(Number(item.productId))) : 0;
+                if (!Number.isFinite(requested) || requested <= 0) {
+                    return connection.rollback(() => callback(new Error(`Invalid quantity for ${item.productName}.`)));
+                }
+                if (onHand < requested) {
+                    return connection.rollback(() => callback(new Error(`Not enough stock for ${item.productName || 'item'}.`)));
+                }
+            }
+
+            const orderSql = `
+                INSERT INTO orders (user_id, total, delivery_method, delivery_address, delivery_fee)
+                VALUES (?, ?, ?, ?, ?)
+            `;
+            connection.query(orderSql, [userId, finalTotal, deliveryMethod, deliveryAddress, safeDeliveryFee], (orderError, orderResult) => {
+                if (orderError) {
+                    return connection.rollback(() => callback(orderError));
                 }
 
-                const unitPrice = Number(item.price);
-                if (!Number.isFinite(unitPrice)) {
-                    return reject(new Error(`Invalid price detected for ${item.productName}.`));
-                }
+                const orderId = orderResult.insertId;
 
-                const insertItemSql = 'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)';
-                connection.query(insertItemSql, [orderId, item.productId, quantity, unitPrice], (itemError) => {
-                    if (itemError) {
-                        return reject(itemError);
+                const itemPromises = cartItems.map((item) => new Promise((resolve, reject) => {
+                    const quantity = Number(item.quantity);
+                    if (!Number.isFinite(quantity) || quantity <= 0) {
+                        return reject(new Error(`Invalid quantity detected for ${item.productName}.`));
                     }
-                    resolve();
-                });
-            }));
 
-            Promise.all(itemPromises)
-                .then(() => {
-                    connection.commit((commitError) => {
-                        if (commitError) {
-                            return connection.rollback(() => callback(commitError));
+                    const unitPrice = Number(item.price);
+                    if (!Number.isFinite(unitPrice)) {
+                        return reject(new Error(`Invalid price detected for ${item.productName}.`));
+                    }
+
+                    const updateStockSql = 'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?';
+                    connection.query(updateStockSql, [quantity, item.productId, quantity], (stockUpdateErr, stockUpdateRes) => {
+                        if (stockUpdateErr) {
+                            return reject(stockUpdateErr);
                         }
-                        callback(null, {
-                            orderId,
-                            total: finalTotal,
-                            deliveryMethod,
-                            deliveryAddress,
-                            deliveryFee: safeDeliveryFee
+                        if (!stockUpdateRes.affectedRows) {
+                            return reject(new Error(`Not enough stock for ${item.productName || 'item'}.`));
+                        }
+
+                        const insertItemSql = 'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)';
+                        connection.query(insertItemSql, [orderId, item.productId, quantity, unitPrice], (itemError) => {
+                            if (itemError) {
+                                return reject(itemError);
+                            }
+                            resolve();
                         });
                     });
-                })
-                .catch((error) => {
-                    connection.rollback(() => callback(error));
-                });
+                }));
+
+                Promise.all(itemPromises)
+                    .then(() => {
+                        connection.commit((commitError) => {
+                            if (commitError) {
+                                return connection.rollback(() => callback(commitError));
+                            }
+                            callback(null, {
+                                orderId,
+                                total: finalTotal,
+                                deliveryMethod,
+                                deliveryAddress,
+                                deliveryFee: safeDeliveryFee
+                            });
+                        });
+                    })
+                    .catch((error) => {
+                        connection.rollback(() => callback(error));
+                    });
+            });
         });
     });
 };

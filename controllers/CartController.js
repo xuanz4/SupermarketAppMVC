@@ -1,4 +1,5 @@
 const db = require('../db');
+const cartStore = require('../models/cartStorage');
 
 const ensureCart = (req) => {
     if (!req.session.cart) {
@@ -40,6 +41,71 @@ const calculatePricing = (product) => {
     };
 };
 
+const hydrateCart = (req, res, done) => {
+    if (!req.session.user) {
+        ensureCart(req);
+        return done();
+    }
+    if (req.session.cart) {
+        return done();
+    }
+
+    cartStore.load(req.session.user.id, (storeErr, storedItems) => {
+        if (storeErr) {
+            console.error('Error loading stored cart:', storeErr);
+            ensureCart(req);
+            return done();
+        }
+        const ids = (storedItems || []).map(item => item.productId).filter(Boolean);
+        if (!ids.length) {
+            ensureCart(req);
+            return done();
+        }
+        const placeholders = ids.map(() => '?').join(',');
+        const sql = `SELECT * FROM products WHERE id IN (${placeholders})`;
+        db.query(sql, ids, (err, rows) => {
+            if (err) {
+                console.error('Error hydrating cart products:', err);
+                ensureCart(req);
+                return done();
+            }
+            const byId = new Map();
+            (rows || []).forEach(r => byId.set(Number(r.id), r));
+            const hydrated = [];
+            (storedItems || []).forEach((item) => {
+                const product = byId.get(Number(item.productId));
+                if (!product) {
+                    return;
+                }
+                const pricing = calculatePricing(product);
+                const offerMessage = product.offerMessage ? String(product.offerMessage).trim() : null;
+                hydrated.push({
+                    productId: product.id,
+                    productName: product.productName,
+                    price: pricing.finalPrice,
+                    originalPrice: pricing.basePrice,
+                    discountPercentage: pricing.discountPercentage,
+                    offerMessage,
+                    hasDiscount: pricing.hasDiscount,
+                    quantity: item.quantity,
+                    image: product.image
+                });
+            });
+            req.session.cart = hydrated;
+            return done();
+        });
+    });
+};
+
+const persistCartIfNeeded = (req) => {
+    if (!req.session.user) return;
+    cartStore.save(req.session.user.id, req.session.cart || [], (err) => {
+        if (err) {
+            console.error('Error saving cart:', err);
+        }
+    });
+};
+
 const addToCart = (req, res) => {
     if (!ensureShopperRole(req, res)) {
         return;
@@ -53,49 +119,37 @@ const addToCart = (req, res) => {
         return res.redirect('/shopping');
     }
 
-    db.query('SELECT * FROM products WHERE id = ?', [productId], (error, results) => {
-        if (error) {
-            console.error('Error fetching product:', error);
-            req.flash('error', 'Unable to add product to cart at this time.');
-            return res.redirect('/shopping');
-        }
-
-        if (results.length === 0) {
-            req.flash('error', 'Product not found.');
-            return res.redirect('/shopping');
-        }
-
-        ensureCart(req);
-        const product = results[0];
-        const existingItem = findCartItem(req.session.cart, productId);
-        const pricing = calculatePricing(product);
-        const offerMessage = product.offerMessage ? String(product.offerMessage).trim() : null;
-
-        const existingQty = existingItem ? existingItem.quantity : 0;
-        const remainingStock = Math.max(0, Number(product.quantity) || 0);
-        const allowedToAdd = Math.min(remainingStock, Math.max(0, MAX_CART_QTY - existingQty));
-        const finalAdd = Math.min(quantity, allowedToAdd);
-
-        if (finalAdd <= 0) {
-            req.flash('error', 'Not enough stock available.');
-            return res.redirect('/cart');
-        }
-
-        if (finalAdd < quantity) {
-            req.flash('error', `Only ${finalAdd} available to add right now.`);
-        }
-
-        const updateProductSql = 'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?';
-        db.query(updateProductSql, [finalAdd, productId, finalAdd], (updateErr, updateRes) => {
-            if (updateErr) {
-                console.error('Error updating stock for cart add:', updateErr);
-                req.flash('error', 'Unable to update stock for this item.');
-                return res.redirect('/cart');
+    hydrateCart(req, res, () => {
+        db.query('SELECT * FROM products WHERE id = ?', [productId], (error, results) => {
+            if (error) {
+                console.error('Error fetching product:', error);
+                req.flash('error', 'Unable to add product to cart at this time.');
+                return res.redirect('/shopping');
             }
-            if (!updateRes.affectedRows) {
+
+            if (results.length === 0) {
+                req.flash('error', 'Product not found.');
+                return res.redirect('/shopping');
+            }
+
+            ensureCart(req);
+            const product = results[0];
+            const existingItem = findCartItem(req.session.cart, productId);
+            const pricing = calculatePricing(product);
+            const offerMessage = product.offerMessage ? String(product.offerMessage).trim() : null;
+
+            const existingQty = existingItem ? existingItem.quantity : 0;
+            const remainingStock = Math.max(0, Number(product.quantity) || 0);
+            const maxTotalAllowed = Math.min(remainingStock, MAX_CART_QTY);
+            const allowedToAdd = Math.max(0, maxTotalAllowed - existingQty);
+            const finalAdd = Math.min(quantity, allowedToAdd);
+
+            if (finalAdd <= 0) {
                 req.flash('error', 'Not enough stock available.');
                 return res.redirect('/cart');
             }
+
+            const cappedNote = finalAdd < quantity ? ` Limited to ${finalAdd} in cart based on stock.` : '';
 
             if (existingItem) {
                 existingItem.quantity = existingQty + finalAdd;
@@ -118,7 +172,8 @@ const addToCart = (req, res) => {
                 });
             }
 
-            req.flash('success', 'Item added to cart.');
+            persistCartIfNeeded(req);
+            req.flash('success', `Item added to cart.${cappedNote}`.trim());
             return res.redirect('/cart');
         });
     });
@@ -129,53 +184,55 @@ const viewCart = (req, res) => {
         return;
     }
 
-    ensureCart(req);
-    const cart = req.session.cart;
-    if (!cart.length) {
-        return res.render('cart', {
-            cart,
-            user: req.session.user,
-            messages: req.flash('success'),
-            errors: req.flash('error')
-        });
-    }
-
-    const ids = cart
-        .map(item => item.productId)
-        .filter((v, i, arr) => Number.isFinite(v) && arr.indexOf(v) === i);
-
-    if (!ids.length) {
-        return res.render('cart', {
-            cart,
-            user: req.session.user,
-            messages: req.flash('success'),
-            errors: req.flash('error')
-        });
-    }
-
-    const placeholders = ids.map(() => '?').join(',');
-    const sql = `SELECT id, quantity FROM products WHERE id IN (${placeholders})`;
-
-    db.query(sql, ids, (err, rows) => {
-        if (err) {
-            console.error('Error fetching stock for cart:', err);
+    hydrateCart(req, res, () => {
+        ensureCart(req);
+        const cart = req.session.cart;
+        if (!cart.length) {
+            return res.render('cart', {
+                cart,
+                user: req.session.user,
+                messages: req.flash('success'),
+                errors: req.flash('error')
+            });
         }
-        const stockMap = new Map();
-        (rows || []).forEach(r => {
-            stockMap.set(Number(r.id), Number(r.quantity));
-        });
 
-        const decoratedCart = cart.map(item => {
-            const onHand = stockMap.has(Number(item.productId)) ? Number(stockMap.get(Number(item.productId))) : 0;
-            const maxAllowed = Math.max(1, Math.min(MAX_CART_QTY, Math.max(0, onHand)));
-            return { ...item, maxAllowed };
-        });
+        const ids = cart
+            .map(item => item.productId)
+            .filter((v, i, arr) => Number.isFinite(v) && arr.indexOf(v) === i);
 
-        res.render('cart', {
-            cart: decoratedCart,
-            user: req.session.user,
-            messages: req.flash('success'),
-            errors: req.flash('error')
+        if (!ids.length) {
+            return res.render('cart', {
+                cart,
+                user: req.session.user,
+                messages: req.flash('success'),
+                errors: req.flash('error')
+            });
+        }
+
+        const placeholders = ids.map(() => '?').join(',');
+        const sql = `SELECT id, quantity FROM products WHERE id IN (${placeholders})`;
+
+        db.query(sql, ids, (err, rows) => {
+            if (err) {
+                console.error('Error fetching stock for cart:', err);
+            }
+            const stockMap = new Map();
+            (rows || []).forEach(r => {
+                stockMap.set(Number(r.id), Number(r.quantity));
+            });
+
+            const decoratedCart = cart.map(item => {
+                const onHand = stockMap.has(Number(item.productId)) ? Number(stockMap.get(Number(item.productId))) : 0;
+                const maxAllowed = Math.max(1, Math.min(MAX_CART_QTY, Math.max(0, onHand)));
+                return { ...item, maxAllowed };
+            });
+
+            res.render('cart', {
+                cart: decoratedCart,
+                user: req.session.user,
+                messages: req.flash('success'),
+                errors: req.flash('error')
+            });
         });
     });
 };
@@ -185,84 +242,51 @@ const updateCartItem = (req, res) => {
         return;
     }
 
-    const productId = parseInt(req.params.id, 10);
-    const quantity = parseInt(req.body.quantity, 10);
+    hydrateCart(req, res, () => {
+        const productId = parseInt(req.params.id, 10);
+        const quantity = parseInt(req.body.quantity, 10);
 
-    ensureCart(req);
+        ensureCart(req);
 
-    if (Number.isNaN(productId)) {
-        req.flash('error', 'Invalid product.');
-        return res.redirect('/cart');
-    }
-
-    const item = findCartItem(req.session.cart, productId);
-    if (!item) {
-        req.flash('error', 'Item not found in cart.');
-        return res.redirect('/cart');
-    }
-
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-        // Return stock when removing
-        const restoreSql = 'UPDATE products SET quantity = quantity + ? WHERE id = ?';
-        db.query(restoreSql, [item.quantity, productId], () => {});
-        req.session.cart = req.session.cart.filter(cartItem => cartItem.productId !== productId);
-        req.flash('success', 'Item removed from cart.');
-        return res.redirect('/cart');
-    }
-
-    const productSql = 'SELECT quantity FROM products WHERE id = ?';
-    db.query(productSql, [productId], (err, rows) => {
-        if (err) {
-            console.error('Error checking stock for update:', err);
-            req.flash('error', 'Unable to update stock.');
+        if (Number.isNaN(productId)) {
+            req.flash('error', 'Invalid product.');
             return res.redirect('/cart');
         }
-        const available = rows && rows[0] ? Number(rows[0].quantity) || 0 : 0;
-        const maxAllowed = Math.max(1, Math.min(MAX_CART_QTY, available));
-        const requestedQty = Number.isFinite(quantity) ? quantity : 0;
-        const targetQty = Math.min(requestedQty, maxAllowed);
-        const delta = targetQty - item.quantity;
 
-        if (requestedQty > maxAllowed) {
-            req.flash('error', `Only ${maxAllowed} available right now.`);
-            if (delta === 0) {
+        const item = findCartItem(req.session.cart, productId);
+        if (!item) {
+            req.flash('error', 'Item not found in cart.');
+            return res.redirect('/cart');
+        }
+
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            req.session.cart = req.session.cart.filter(cartItem => cartItem.productId !== productId);
+            persistCartIfNeeded(req);
+            req.flash('success', 'Item removed from cart.');
+            return res.redirect('/cart');
+        }
+
+        const productSql = 'SELECT quantity FROM products WHERE id = ?';
+        db.query(productSql, [productId], (err, rows) => {
+            if (err) {
+                console.error('Error checking stock for update:', err);
+                req.flash('error', 'Unable to update stock.');
                 return res.redirect('/cart');
             }
-        }
+            const available = rows && rows[0] ? Number(rows[0].quantity) || 0 : 0;
+            const maxAllowed = Math.max(1, Math.min(MAX_CART_QTY, available));
+            const requestedQty = Number.isFinite(quantity) ? quantity : 0;
+            const targetQty = Math.min(requestedQty, maxAllowed);
 
-        if (delta === 0) {
+            if (requestedQty > maxAllowed) {
+                req.flash('error', `Only ${maxAllowed} available right now.`);
+            }
+
+            item.quantity = targetQty;
+            persistCartIfNeeded(req);
             req.flash('success', 'Cart updated successfully.');
             return res.redirect('/cart');
-        }
-
-        if (delta > 0) {
-            const stockSql = 'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?';
-            db.query(stockSql, [delta, productId, delta], (stockErr, result) => {
-                if (stockErr) {
-                    console.error('Error reducing stock for cart update:', stockErr);
-                    req.flash('error', 'Unable to update stock.');
-                    return res.redirect('/cart');
-                }
-                if (!result.affectedRows) {
-                    req.flash('error', 'Not enough stock available.');
-                    return res.redirect('/cart');
-                }
-                item.quantity = targetQty;
-                req.flash('success', 'Cart updated successfully.');
-                return res.redirect('/cart');
-            });
-        } else {
-            const restore = Math.abs(delta);
-            const restoreSql = 'UPDATE products SET quantity = quantity + ? WHERE id = ?';
-            db.query(restoreSql, [restore, productId], (restoreErr) => {
-                if (restoreErr) {
-                    console.error('Error restoring stock for cart update:', restoreErr);
-                }
-                item.quantity = targetQty;
-                req.flash('success', 'Cart updated successfully.');
-                return res.redirect('/cart');
-            });
-        }
+        });
     });
 };
 
@@ -271,41 +295,28 @@ const removeCartItem = (req, res) => {
         return;
     }
 
-    const productId = parseInt(req.params.id, 10);
+    hydrateCart(req, res, () => {
+        const productId = parseInt(req.params.id, 10);
 
-    ensureCart(req);
+        ensureCart(req);
 
-    if (Number.isNaN(productId)) {
-        req.flash('error', 'Invalid product.');
-        return res.redirect('/cart');
-    }
-
-    const originalLength = req.session.cart.length;
-    let removedQty = 0;
-    req.session.cart = req.session.cart.filter(cartItem => {
-        if (cartItem.productId === productId) {
-            removedQty += cartItem.quantity;
-            return false;
+        if (Number.isNaN(productId)) {
+            req.flash('error', 'Invalid product.');
+            return res.redirect('/cart');
         }
-        return true;
+
+        const originalLength = req.session.cart.length;
+        req.session.cart = req.session.cart.filter(cartItem => cartItem.productId !== productId);
+
+        if (req.session.cart.length === originalLength) {
+            req.flash('error', 'Item not found in cart.');
+        } else {
+            persistCartIfNeeded(req);
+            req.flash('success', 'Item removed from cart.');
+        }
+
+        return res.redirect('/cart');
     });
-
-    if (removedQty > 0) {
-        const restoreSql = 'UPDATE products SET quantity = quantity + ? WHERE id = ?';
-        db.query(restoreSql, [removedQty, productId], (err) => {
-            if (err) {
-                console.error('Error restoring stock on remove:', err);
-            }
-        });
-    }
-
-    if (req.session.cart.length === originalLength) {
-        req.flash('error', 'Item not found in cart.');
-    } else {
-        req.flash('success', 'Item removed from cart.');
-    }
-
-    return res.redirect('/cart');
 };
 
 module.exports = {

@@ -11,6 +11,7 @@ const orderController = require('./controllers/OrderController');
 const reviewController = require('./controllers/ReviewController');
 const Product = require('./models/product');
 const Order = require('./models/order');
+const cartStore = require('./models/cartStorage');
 
 const normalisePrice = (value) => {
     const parsed = Number.parseFloat(value);
@@ -81,6 +82,34 @@ app.use(flash());
 app.use((req, res, next) => {
     res.locals.user = req.session.user || null;
     next();
+});
+
+// Make cart item count available to all views
+app.use((req, res, next) => {
+    const computeCount = (items) => (items || []).reduce((sum, item) => {
+        const qty = Number(item && item.quantity);
+        return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
+    }, 0);
+
+    if (!req.session.user) {
+        res.locals.cartCount = computeCount(req.session.cart);
+        return next();
+    }
+
+    if (Array.isArray(req.session.cart)) {
+        res.locals.cartCount = computeCount(req.session.cart);
+        return next();
+    }
+
+    cartStore.load(req.session.user.id, (err, storedItems) => {
+        if (err) {
+            console.error('Error loading cart count:', err);
+            res.locals.cartCount = 0;
+            return next();
+        }
+        res.locals.cartCount = computeCount(storedItems);
+        return next();
+    });
 });
 
 // Middleware to check if user is logged in
