@@ -230,6 +230,16 @@ const checkout = (req, res) => {
         return res.redirect('/payment');
     }
 
+    const paymentMethod = ['card', 'paynow', 'cash'].includes(req.body.paymentMethod) ? req.body.paymentMethod : 'card';
+
+    if (paymentMethod === 'card') {
+        const { cardName, cardNumber, expiry, cvv } = req.body;
+        if (!cardName || !cardNumber || !expiry || !cvv) {
+            req.flash('error', 'Please fill in all card details.');
+            return res.redirect('/payment');
+        }
+    }
+
     const deliveryFee = pending ? Number(pending.deliveryFee || 0) : computeDeliveryFee(req.session.user, deliveryMethod);
 
     Order.create(req.session.user.id, cartItems, { deliveryMethod, deliveryAddress, deliveryFee }, (error) => {
@@ -241,7 +251,8 @@ const checkout = (req, res) => {
 
         req.session.cart = [];
         req.session.pendingCheckout = null;
-        req.flash('success', `Thanks for your purchase! ${deliveryMethod === 'delivery' ? 'We will deliver your order shortly.' : 'Pickup details will be shared soon.'}`);
+        const paymentCopy = paymentMethod === 'paynow' ? 'Payment via PayNow recorded.' : (paymentMethod === 'cash' ? 'Cash on delivery/pickup selected.' : 'Card payment recorded.');
+        req.flash('success', `Thanks for your purchase! ${paymentCopy} ${deliveryMethod === 'delivery' ? 'We will deliver your order shortly.' : 'Pickup details will be shared soon.'}`);
         return res.redirect('/orders/history');
     });
 };

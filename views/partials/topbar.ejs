@@ -1,7 +1,8 @@
 <nav class="topbar shadow-sm">
   <div class="container d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center gap-3">
-      <a class="brand-mark" href="/">SM</a>
+      <% const brandHref = user ? (user.role === 'admin' ? '/inventory' : '/shopping') : '/'; %>
+      <a class="brand-mark" href="<%= brandHref %>">SM</a>
       <span class="fw-semibold">Supermarket</span>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
@@ -23,3 +24,24 @@
   </div>
 </nav>
 
+<% const successMessages = (typeof messages !== 'undefined' && messages) ? messages : []; %>
+<% if (successMessages.length) { %>
+  <div class="toast-container position-fixed top-0 start-50 translate-middle-x p-3 mt-3" style="z-index: 1090; min-width: 320px; max-width: 480px;">
+    <% successMessages.forEach(function(msg, idx) { %>
+      <div class="toast align-items-center text-bg-success border-0 shadow-lg fs-5" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3500" data-autoshow="true" id="toast-success-<%= idx %>">
+        <div class="toast-body d-flex align-items-center justify-content-between gap-3">
+          <span><%= msg %></span>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    <% }); %>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.toast[data-autoshow="true"]').forEach(function (toastEl) {
+        var toast = new bootstrap.Toast(toastEl);
+        toast.show();
+      });
+    });
+  </script>
+<% } %>

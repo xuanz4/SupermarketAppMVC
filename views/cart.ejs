@@ -73,7 +73,7 @@
                           <label for="cart-quantity-<%= item.productId %>" class="form-label mb-0 small text-muted text-uppercase">Qty</label>
                           <div class="input-group" style="max-width: 190px;">
                             <button class="btn btn-outline-secondary" type="button" onclick="stepQty('cart-quantity-<%= item.productId %>', -1)">-</button>
-                            <input type="number" id="cart-quantity-<%= item.productId %>" name="quantity" class="form-control text-center" min="1" value="<%= item.quantity %>" required>
+                            <input type="number" id="cart-quantity-<%= item.productId %>" name="quantity" class="form-control text-center" min="1" max="<%= item.maxAllowed || 1 %>" value="<%= item.quantity %>" required>
                             <button class="btn btn-outline-secondary" type="button" onclick="stepQty('cart-quantity-<%= item.productId %>', 1)">+</button>
                           </div>
                           <button type="submit" class="btn btn-primary">Update</button>
@@ -142,7 +142,9 @@
     function stepQty(id, delta) {
       var input = document.getElementById(id);
       if (!input) return;
+      var max = parseInt(input.getAttribute('max') || '1', 10);
       var next = Math.max(1, parseInt(input.value || '1', 10) + delta);
+      next = Math.min(max, next);
       input.value = next;
     }
   </script>

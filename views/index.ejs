@@ -9,16 +9,50 @@
   <title>Welcome | Supermarket</title>
 </head>
 <body class="bg-surface">
-  <main class="page-section">
-    <div class="container text-center">
-      <h1 class="text-navy mb-3">Supermarket</h1>
-      <p class="text-muted mb-4">Grocery shopping made modern: curated picks, fast checkout, trusted delivery.</p>
-      <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
-        <a href="/login" class="btn btn-primary">Login</a>
-        <a href="/register" class="btn btn-outline-secondary">Create account</a>
+  <main class="page-section py-5">
+    <div class="container">
+      <div class="row g-4 align-items-center">
+        <div class="col-12 col-lg-6">
+          <div class="d-inline-flex align-items-center gap-2 mb-3 px-3 py-2 rounded-pill bg-light shadow-sm">
+            <span class="badge bg-primary">Fresh</span>
+            <span class="text-muted small">Daily produce, pantry picks, and ready-to-eat essentials</span>
+          </div>
+          <h1 class="display-5 fw-bold text-navy mb-3">Shop smarter, cook happier.</h1>
+          <p class="lead text-muted mb-4">Fast checkout, curated categories, and reliable delivery or pickup—built for shoppers and admins alike.</p>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <a href="/login" class="btn btn-primary btn-lg px-4">Login</a>
+            <a href="/register" class="btn btn-outline-secondary btn-lg px-4">Create account</a>
+            <% if (user && user.role === 'admin') { %>
+              <a href="/inventory" class="btn btn-outline-primary btn-lg px-4">Go to Inventory</a>
+            <% } else if (user) { %>
+              <a href="/shopping" class="btn btn-outline-primary btn-lg px-4">Continue shopping</a>
+            <% } %>
+          </div>
+          <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-success-subtle text-success">Fast</span>
+              <small class="text-muted">Lightning checkout</small>
+            </div>
+            <div class="vr"></div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-info-subtle text-info">Reliable</span>
+              <small class="text-muted">Delivery or pickup</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="position-relative">
+            <div class="hero-blob position-absolute top-0 start-0 translate-middle rounded-circle opacity-75"></div>
+            <div class="card border-0 shadow-lg overflow-hidden">
+              <div class="ratio ratio-4x3">
+                <img src="/images/supermarket.jpg" alt="Supermarket aisle" class="img-fluid w-100 h-100 object-fit-cover">
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="row g-4 justify-content-center">
+      <div class="row g-4 mt-5">
         <div class="col-12 col-md-4">
           <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
@@ -45,14 +79,17 @@
         </div>
       </div>
 
-      <div class="mt-5">
-        <p class="text-muted small">Returning user? Go straight to Orders or Inventory after signing in.</p>
-      </div>
+      <style>
+        .hero-blob {
+          width: 260px;
+          height: 260px;
+          background: radial-gradient(circle at 30% 30%, rgba(70, 153, 255, 0.35), rgba(111, 66, 193, 0.1));
+          filter: blur(10px);
+          z-index: 0;
+        }
+        .ratio img { object-fit: cover; }
+      </style>
     </div>
   </main>
 </body>
 </html>
-
-
-
-

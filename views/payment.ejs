@@ -20,23 +20,60 @@
         <div class="card border-0 shadow-sm">
           <div class="card-body">
             <h4 class="mb-3">Payment</h4>
-            <form action="/payment/confirm" method="POST" class="d-flex flex-column gap-3">
-              <div class="row g-3">
+            <form action="/payment/confirm" method="POST" class="d-flex flex-column gap-3" id="payment-form">
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-card" value="card" checked>
+                  <label class="form-check-label fw-semibold" for="pay-card">Card</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-paynow" value="paynow">
+                  <label class="form-check-label fw-semibold" for="pay-paynow">PayNow</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-cash" value="cash">
+                  <label class="form-check-label fw-semibold" for="pay-cash">Cash</label>
+                </div>
+              </div>
+
+              <div class="row g-3 payment-section" data-payment="card">
                 <div class="col-12">
                   <label class="form-label">Name on card</label>
-                  <input type="text" name="cardName" class="form-control" placeholder="<%= pending && pending.fullName ? pending.fullName : 'Full name' %>" required>
+                  <input type="text" name="cardName" class="form-control" placeholder="<%= pending && pending.fullName ? pending.fullName : 'Full name' %>">
                 </div>
                 <div class="col-12">
                   <label class="form-label">Card number</label>
-                  <input type="text" name="cardNumber" class="form-control" placeholder="1234 5678 9012 3456" minlength="12" maxlength="19" inputmode="numeric" required>
+                  <input type="text" name="cardNumber" class="form-control" placeholder="1234 5678 9012 3456" minlength="12" maxlength="19" inputmode="numeric">
                 </div>
                 <div class="col-6">
                   <label class="form-label">Expiry</label>
-                  <input type="text" name="expiry" class="form-control" placeholder="MM/YY" minlength="4" maxlength="5" required>
+                  <input type="text" name="expiry" class="form-control" placeholder="MM/YY" minlength="4" maxlength="5">
                 </div>
                 <div class="col-6">
                   <label class="form-label">CVV</label>
-                  <input type="text" name="cvv" class="form-control" placeholder="123" minlength="3" maxlength="4" inputmode="numeric" required>
+                  <input type="text" name="cvv" class="form-control" placeholder="123" minlength="3" maxlength="4" inputmode="numeric">
+                </div>
+              </div>
+
+              <div class="payment-section d-none" data-payment="paynow">
+                <div class="alert alert-info mb-2">
+                  <div class="fw-semibold mb-1">PayNow</div>
+                  <div class="small mb-0">Scan to pay or send to mobile: <strong>88334430</strong>.</div>
+                </div>
+                <div class="card border-0 shadow-sm">
+                  <div class="card-body text-center">
+                    <div class="ratio ratio-1x1" style="max-width: 280px; margin: 0 auto;">
+                      <img src="/images/paynow.jpg" alt="PayNow QR" class="img-fluid rounded">
+                    </div>
+                    <small class="text-muted d-block mt-2">Show this QR to complete PayNow payment.</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="payment-section d-none" data-payment="cash">
+                <div class="alert alert-secondary mb-0">
+                  <div class="fw-semibold mb-1">Cash on delivery/pickup</div>
+                  <div class="small mb-0">Prepare exact change. Rider/staff will collect upon handover.</div>
                 </div>
               </div>
 
@@ -49,7 +86,7 @@
               </div>
 
               <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-success btn-lg">Pay $<%= totalWithFees.toFixed(2) %></button>
+                <button type="submit" class="btn btn-success btn-lg">Confirm payment $<%= totalWithFees.toFixed(2) %></button>
                 <a class="btn btn-outline-secondary" href="/checkout">Back to checkout</a>
               </div>
             </form>
@@ -95,3 +132,34 @@
 </main>
 
 <%- include('partials/footer') %>
+
+<script>
+  (function() {
+    const form = document.getElementById('payment-form');
+    if (!form) return;
+
+    const sections = Array.from(document.querySelectorAll('.payment-section'));
+    const radios = form.querySelectorAll('input[name="paymentMethod"]');
+
+    function updateSections(method) {
+      sections.forEach((section) => {
+        const target = section.getAttribute('data-payment');
+        const isMatch = target === method;
+        section.classList.toggle('d-none', !isMatch);
+        section.querySelectorAll('input').forEach((input) => {
+          input.required = isMatch && target === 'card';
+        });
+      });
+    }
+
+    radios.forEach((radio) => {
+      radio.addEventListener('change', function() {
+        if (this.checked) {
+          updateSections(this.value);
+        }
+      });
+    });
+
+    updateSections(form.querySelector('input[name="paymentMethod"]:checked').value);
+  })();
+</script>

@@ -60,40 +60,17 @@ const create = (userId, cartItems, options, callback) => {
                     return reject(new Error(`Invalid quantity detected for ${item.productName}.`));
                 }
 
-                const productSql = 'SELECT quantity FROM products WHERE id = ? FOR UPDATE';
-                connection.query(productSql, [item.productId], (productError, productRows) => {
-                    if (productError) {
-                        return reject(productError);
+                const unitPrice = Number(item.price);
+                if (!Number.isFinite(unitPrice)) {
+                    return reject(new Error(`Invalid price detected for ${item.productName}.`));
+                }
+
+                const insertItemSql = 'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)';
+                connection.query(insertItemSql, [orderId, item.productId, quantity, unitPrice], (itemError) => {
+                    if (itemError) {
+                        return reject(itemError);
                     }
-
-                    if (productRows.length === 0) {
-                        return reject(new Error(`${item.productName} does not exist.`));
-                    }
-
-                    const availableQuantity = Number(productRows[0].quantity);
-                    if (availableQuantity < quantity) {
-                        return reject(new Error(`Insufficient stock for ${item.productName}.`));
-                    }
-
-                    const unitPrice = Number(item.price);
-                    if (!Number.isFinite(unitPrice)) {
-                        return reject(new Error(`Invalid price detected for ${item.productName}.`));
-                    }
-
-                    const insertItemSql = 'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)';
-                    connection.query(insertItemSql, [orderId, item.productId, quantity, unitPrice], (itemError) => {
-                        if (itemError) {
-                            return reject(itemError);
-                        }
-
-                        const updateProductSql = 'UPDATE products SET quantity = quantity - ? WHERE id = ?';
-                        connection.query(updateProductSql, [quantity, item.productId], (updateError) => {
-                            if (updateError) {
-                                return reject(updateError);
-                            }
-                            resolve();
-                        });
-                    });
+                    resolve();
                 });
             }));
 
