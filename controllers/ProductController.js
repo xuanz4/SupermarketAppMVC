@@ -1,5 +1,6 @@
 const Product = require('../models/product');
 const Review = require('../models/review');
+const Order = require('../models/order');
 
 const toCurrency = (value, precision = 2) => {
     const numberValue = Number.parseFloat(value);
@@ -195,6 +196,45 @@ const ProductController = {
                 res.redirect('/inventory');
             }
         });
+    },
+
+    // Shopper catalogue
+    showShopping: async (req, res) => {
+        const activeCategory = req.query.category ? String(req.query.category).trim() : '';
+        const searchTerm = req.query.search ? String(req.query.search).trim() : '';
+        const sort = req.query.sort ? String(req.query.sort).trim() : '';
+        const minPrice = Number.parseFloat(req.query.minPrice);
+        const maxPrice = Number.parseFloat(req.query.maxPrice);
+
+        const asPromise = (fn, ...args) => new Promise((resolve, reject) => {
+            fn(...args, (err, result) => (err ? reject(err) : resolve(result)));
+        });
+
+        try {
+            const [products, categoryRows, bestSellers] = await Promise.all([
+                asPromise(Product.getFiltered, { category: activeCategory, search: searchTerm, sort, minPrice, maxPrice }),
+                asPromise(Product.getCategories),
+                asPromise(Order.getBestSellers, 3)
+            ]);
+
+            res.render('shopping', {
+                user: req.session.user,
+                products: (products || []).map(enhanceProductRecord),
+                categories: (categoryRows || []).map((row) => row.category).filter(Boolean),
+                activeCategory,
+                searchTerm,
+                sort,
+                minPrice: Number.isFinite(minPrice) ? minPrice : '',
+                maxPrice: Number.isFinite(maxPrice) ? maxPrice : '',
+                bestSellers: (bestSellers && bestSellers.length) ? bestSellers.map(enhanceProductRecord) : [],
+                messages: req.flash('success'),
+                errors: req.flash('error')
+            });
+        } catch (error) {
+            console.error('Error loading shopping data:', error);
+            req.flash('error', 'Unable to load products right now.');
+            return res.redirect('/');
+        }
     },
 
     // Show individual product details

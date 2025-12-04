@@ -9,43 +9,7 @@ const cartController = require('./controllers/CartController');
 const productController = require('./controllers/ProductController');
 const orderController = require('./controllers/OrderController');
 const reviewController = require('./controllers/ReviewController');
-const Product = require('./models/product');
-const Order = require('./models/order');
-const cartStore = require('./models/cartStorage');
-
-const normalisePrice = (value) => {
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-        return 0;
-    }
-    return Number(parsed.toFixed(2));
-};
-
-const decorateProduct = (product) => {
-    if (!product) {
-        return product;
-    }
-
-    const basePrice = normalisePrice(product.price);
-    const discountPercentage = Math.min(
-        100,
-        Math.max(0, Number.parseFloat(product.discountPercentage) || 0)
-    );
-    const hasDiscount = discountPercentage > 0;
-    const offerMessage = product.offerMessage ? String(product.offerMessage).trim() : null;
-    const effectivePrice = hasDiscount
-        ? normalisePrice(basePrice * (1 - discountPercentage / 100))
-        : basePrice;
-
-    return {
-        ...product,
-        price: basePrice,
-        discountPercentage,
-        offerMessage,
-        effectivePrice,
-        hasDiscount
-    };
-};
+const { attachUser, attachCartCount, checkAuthenticated, checkAdmin, checkRoles } = require('./middleware');
 
 // Set up multer for file uploads
 const storage = multer.diskStorage({
@@ -79,75 +43,10 @@ app.use(session({
 app.use(flash());
 
 // Make the signed-in user available to all views to avoid undefined errors
-app.use((req, res, next) => {
-    res.locals.user = req.session.user || null;
-    next();
-});
+app.use(attachUser);
 
 // Make cart item count available to all views
-app.use((req, res, next) => {
-    const computeCount = (items) => (items || []).reduce((sum, item) => {
-        const qty = Number(item && item.quantity);
-        return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
-    }, 0);
-
-    if (!req.session.user) {
-        res.locals.cartCount = computeCount(req.session.cart);
-        return next();
-    }
-
-    if (Array.isArray(req.session.cart)) {
-        res.locals.cartCount = computeCount(req.session.cart);
-        return next();
-    }
-
-    cartStore.load(req.session.user.id, (err, storedItems) => {
-        if (err) {
-            console.error('Error loading cart count:', err);
-            res.locals.cartCount = 0;
-            return next();
-        }
-        res.locals.cartCount = computeCount(storedItems);
-        return next();
-    });
-});
-
-// Middleware to check if user is logged in
-const checkAuthenticated = (req, res, next) => {
-    if (req.session.user) {
-        return next();
-    } else {
-        req.flash('error', 'Please log in to view this resource');
-        res.redirect('/login');
-    }
-};
-
-// Middleware to check if user is admin
-const checkAdmin = (req, res, next) => {
-    if (req.session.user && req.session.user.role === 'admin') {
-        return next();
-    } else {
-        req.flash('error', 'Access denied');
-        res.redirect('/shopping');
-    }
-};
-
-// Middleware to restrict access based on allowed roles
-// Role guard: admin or listed roles; if no roles provided, any signed-in user is allowed
-const checkRoles = (...roles) => (req, res, next) => {
-    if (req.session.user) {
-        if (req.session.user.role === 'admin') {
-            return next();
-        }
-        if (!roles.length || roles.includes(req.session.user.role)) {
-            return next();
-        }
-        req.flash('error', 'Access denied');
-        return res.redirect('/orders/history');
-    }
-    req.flash('error', 'Please log in to view this resource');
-    res.redirect('/login');
-};
+app.use(attachCartCount);
 
 // Routes
 app.get('/', (req, res) => {
@@ -170,50 +69,7 @@ app.post('/admin/users/:id/delete', checkAuthenticated, checkAdmin, userControll
 // Friendly alias for shopping
 app.get('/shop', (req, res) => res.redirect('/shopping'));
 
-app.get('/shopping', checkAuthenticated, (req, res) => {
-    const activeCategory = req.query.category ? String(req.query.category).trim() : '';
-    const searchTerm = req.query.search ? String(req.query.search).trim() : '';
-    const sort = req.query.sort ? String(req.query.sort).trim() : '';
-    const minPrice = Number.parseFloat(req.query.minPrice);
-    const maxPrice = Number.parseFloat(req.query.maxPrice);
-
-    Product.getFiltered({ category: activeCategory, search: searchTerm, sort, minPrice, maxPrice }, (error, products) => {
-        if (error) {
-            console.error('Error loading products:', error);
-            req.flash('error', 'Unable to load products right now.');
-            return res.redirect('/');
-        }
-
-        Product.getCategories((catErr, categoryRows) => {
-            if (catErr) {
-                console.error('Error loading categories:', catErr);
-            }
-
-            const productList = (products || []).map(decorateProduct);
-            const categories = (categoryRows || []).map((row) => row.category).filter(Boolean);
-
-            Order.getBestSellers(3, (bestErr, bestSellers) => {
-                if (bestErr) {
-                    console.error('Error fetching best sellers:', bestErr);
-                }
-
-                res.render('shopping', {
-                    user: req.session.user,
-                    products: productList,
-                    categories,
-                    activeCategory,
-                    searchTerm,
-                    sort,
-                    minPrice: Number.isFinite(minPrice) ? minPrice : '',
-                    maxPrice: Number.isFinite(maxPrice) ? maxPrice : '',
-                    bestSellers: (bestSellers && bestSellers.length) ? bestSellers.map(decorateProduct) : [],
-                    messages: req.flash('success'),
-                    errors: req.flash('error')
-                });
-            });
-        });
-    });
-});
+app.get('/shopping', checkAuthenticated, productController.showShopping);
 
 app.post('/add-to-cart/:id', checkAuthenticated, checkRoles('user'), cartController.addToCart);
 app.get('/cart', checkAuthenticated, checkRoles('user'), cartController.viewCart);
@@ -244,5 +100,3 @@ app.get('/admin/deliveries', checkAuthenticated, checkAdmin, orderController.lis
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-
-
