@@ -23,35 +23,24 @@
             <form action="/payment/confirm" method="POST" class="d-flex flex-column gap-3" id="payment-form">
               <div class="d-flex flex-wrap gap-3">
                 <div class="form-check">
-                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-card" value="card" checked>
-                  <label class="form-check-label fw-semibold" for="pay-card">Card</label>
-                </div>
-                <div class="form-check">
                   <input class="form-check-input" type="radio" name="paymentMethod" id="pay-paynow" value="paynow">
                   <label class="form-check-label fw-semibold" for="pay-paynow">PayNow</label>
                 </div>
                 <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-paypal" value="paypal" checked>
+                  <label class="form-check-label fw-semibold" for="pay-paypal">PayPal</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-nets" value="nets">
+                  <label class="form-check-label fw-semibold" for="pay-nets">NETS QR</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-wallet" value="wallet">
+                  <label class="form-check-label fw-semibold" for="pay-wallet">E-Wallet</label>
+                </div>
+                <div class="form-check">
                   <input class="form-check-input" type="radio" name="paymentMethod" id="pay-cash" value="cash">
                   <label class="form-check-label fw-semibold" for="pay-cash">Cash</label>
-                </div>
-              </div>
-
-              <div class="row g-3 payment-section" data-payment="card">
-                <div class="col-12">
-                  <label class="form-label">Name on card</label>
-                  <input type="text" name="cardName" class="form-control" placeholder="<%= pending && pending.fullName ? pending.fullName : 'Full name' %>">
-                </div>
-                <div class="col-12">
-                  <label class="form-label">Card number</label>
-                  <input type="text" name="cardNumber" class="form-control" placeholder="1234 5678 9012 3456" minlength="12" maxlength="19" inputmode="numeric">
-                </div>
-                <div class="col-6">
-                  <label class="form-label">Expiry</label>
-                  <input type="text" name="expiry" class="form-control" placeholder="MM/YY" minlength="4" maxlength="5">
-                </div>
-                <div class="col-6">
-                  <label class="form-label">CVV</label>
-                  <input type="text" name="cvv" class="form-control" placeholder="123" minlength="3" maxlength="4" inputmode="numeric">
                 </div>
               </div>
 
@@ -70,6 +59,36 @@
                 </div>
               </div>
 
+              <div class="payment-section d-none" data-payment="paypal">
+                <% if (paypalClientId) { %>
+                  <div id="paypal-button-container"></div>
+                  <small class="text-muted d-block mt-2">Complete the PayPal checkout to place your order.</small>
+                <% } else { %>
+                  <div class="alert alert-warning mb-0">
+                    PayPal is not configured. Please set your PayPal sandbox credentials.
+                  </div>
+                <% } %>
+              </div>
+
+              <div class="payment-section d-none" data-payment="nets">
+                <div class="alert alert-info mb-2">
+                  <div class="fw-semibold mb-1">NETS QR</div>
+                  <div class="small mb-0">Generate a NETS QR code to scan and pay.</div>
+                </div>
+              </div>
+
+              <div class="payment-section d-none" data-payment="wallet">
+                <div class="alert alert-info mb-2">
+                  <div class="fw-semibold mb-1">E-Wallet</div>
+                  <div class="small mb-0">Wallet balance: $<%= Number(walletBalance || 0).toFixed(2) %></div>
+                </div>
+                <% if (Number(walletBalance || 0) < Number(totalWithFees || 0)) { %>
+                  <div class="small text-danger">Insufficient balance. Please top up before paying.</div>
+                <% } else { %>
+                  <div class="small text-muted">You have enough balance to cover this order.</div>
+                <% } %>
+              </div>
+
               <div class="payment-section d-none" data-payment="cash">
                 <div class="alert alert-secondary mb-0">
                   <div class="fw-semibold mb-1">Cash on delivery/pickup</div>
@@ -86,8 +105,8 @@
               </div>
 
               <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-success btn-lg">Confirm payment $<%= totalWithFees.toFixed(2) %></button>
-                <a class="btn btn-outline-secondary" href="/checkout">Back to checkout</a>
+                <button type="submit" class="btn btn-success btn-lg fw-semibold" id="confirm-payment">Confirm payment $<%= totalWithFees.toFixed(2) %></button>
+                <a class="btn btn-secondary fw-semibold" href="/checkout">Back to checkout</a>
               </div>
             </form>
           </div>
@@ -133,6 +152,10 @@
 
 <%- include('partials/footer') %>
 
+<% if (paypalClientId) { %>
+  <script src="https://www.paypal.com/sdk/js?client-id=<%= paypalClientId %>&currency=SGD"></script>
+<% } %>
+
 <script>
   (function() {
     const form = document.getElementById('payment-form');
@@ -140,6 +163,8 @@
 
     const sections = Array.from(document.querySelectorAll('.payment-section'));
     const radios = form.querySelectorAll('input[name="paymentMethod"]');
+    const confirmButton = form.querySelector('#confirm-payment');
+    const defaultAction = form.getAttribute('action') || '/payment/confirm';
 
     function updateSections(method) {
       sections.forEach((section) => {
@@ -147,9 +172,25 @@
         const isMatch = target === method;
         section.classList.toggle('d-none', !isMatch);
         section.querySelectorAll('input').forEach((input) => {
-          input.required = isMatch && target === 'card';
+          input.required = false;
         });
       });
+
+      if (confirmButton) {
+        const hideConfirm = method === 'paypal';
+        const insufficientWallet = method === 'wallet' && Number(<%= Number(walletBalance || 0).toFixed(2) %>) < Number(<%= Number(totalWithFees || 0).toFixed(2) %>);
+        confirmButton.classList.toggle('d-none', hideConfirm);
+        confirmButton.disabled = hideConfirm || insufficientWallet;
+        confirmButton.textContent = method === 'nets'
+          ? 'Generate NETS QR'
+          : (insufficientWallet ? 'Insufficient wallet balance' : 'Confirm payment $<%= totalWithFees.toFixed(2) %>');
+      }
+
+      if (method === 'nets') {
+        form.setAttribute('action', '/nets-qr/create');
+      } else {
+        form.setAttribute('action', defaultAction);
+      }
     }
 
     radios.forEach((radio) => {
@@ -161,5 +202,44 @@
     });
 
     updateSections(form.querySelector('input[name="paymentMethod"]:checked').value);
+  })();
+</script>
+
+<script>
+  (function() {
+    if (!window.paypal) return;
+
+    const buttonContainer = document.getElementById('paypal-button-container');
+    if (!buttonContainer) return;
+
+    paypal.Buttons({
+      createOrder: function() {
+        return fetch('/paypal/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+          .then((response) => response.json())
+          .then((order) => order.id);
+      },
+      onApprove: function(data) {
+        return fetch('/paypal/capture-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: data.orderID })
+        })
+          .then((response) => response.json())
+          .then((result) => {
+            if (result && result.redirect) {
+              window.location.href = result.redirect;
+              return;
+            }
+            alert(result && result.error ? result.error : 'Payment completed, but we could not finalise the order.');
+          });
+      },
+      onError: function(err) {
+        console.error('PayPal error:', err);
+        alert('PayPal checkout failed. Please try again.');
+      }
+    }).render('#paypal-button-container');
   })();
 </script>

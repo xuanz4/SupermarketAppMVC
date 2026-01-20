@@ -9,6 +9,7 @@ const cartController = require('./controllers/CartController');
 const productController = require('./controllers/ProductController');
 const orderController = require('./controllers/OrderController');
 const reviewController = require('./controllers/ReviewController');
+const paymentController = require('./controllers/PaymentController');
 const { attachUser, attachCartCount, checkAuthenticated, checkAdmin, checkRoles } = require('./middleware');
 
 // Set up multer for file uploads
@@ -22,6 +23,15 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage: storage });
+const refundStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'public/uploads/refunds');
+    },
+    filename: (req, file, cb) => {
+        cb(null, `${Date.now()}-${file.originalname}`);
+    }
+});
+const refundUpload = multer({ storage: refundStorage });
 
 // Set up view engine
 app.set('view engine', 'ejs');
@@ -31,6 +41,7 @@ app.use(express.static('public'));
 app.use(express.urlencoded({
     extended: false
 }));
+app.use(express.json());
 
 // Session Middleware
 app.use(session({
@@ -79,8 +90,22 @@ app.get('/checkout', checkAuthenticated, checkRoles('user'), orderController.sho
 app.post('/checkout', checkAuthenticated, checkRoles('user'), orderController.startPayment);
 app.get('/payment', checkAuthenticated, checkRoles('user'), orderController.showPayment);
 app.post('/payment/confirm', checkAuthenticated, checkRoles('user'), orderController.checkout);
+app.post('/paypal/create-order', checkAuthenticated, checkRoles('user'), paymentController.createPaypalOrder);
+app.post('/paypal/capture-order', checkAuthenticated, checkRoles('user'), paymentController.capturePaypalOrder);
+app.post('/nets-qr/create', checkAuthenticated, checkRoles('user'), paymentController.generateNetsQr);
+app.post('/nets-qr/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmNetsPayment);
+app.get('/nets-qr/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmNetsPayment);
+app.get('/nets-qr/fail', checkAuthenticated, checkRoles('user'), paymentController.showNetsFail);
+app.get('/sse/payment-status/:txnRetrievalRef', checkAuthenticated, checkRoles('user'), paymentController.streamNetsPaymentStatus);
+app.post('/payments/:orderId/refund', checkAuthenticated, checkAdmin, paymentController.refundPayment);
+app.get('/wallet', checkAuthenticated, checkRoles('user'), paymentController.showWallet);
+app.post('/wallet/topup/paypal/create-order', checkAuthenticated, checkRoles('user'), paymentController.createPaypalTopupOrder);
+app.post('/wallet/topup/paypal/capture', checkAuthenticated, checkRoles('user'), paymentController.capturePaypalTopup);
+app.post('/wallet/topup/nets/create', checkAuthenticated, checkRoles('user'), paymentController.createNetsTopup);
+app.get('/wallet/topup/nets/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmNetsTopup);
 app.get('/orders/history', checkAuthenticated, checkRoles('user'), orderController.history);
 app.post('/orders/:id/delivery', checkAuthenticated, orderController.updateDeliveryDetails);
+app.post('/orders/:id/refund-request', checkAuthenticated, checkRoles('user'), refundUpload.single('refundImage'), orderController.submitRefundRequest);
 app.post('/orders/:id/delete', checkAuthenticated, checkAdmin, orderController.deleteOrder);
 
 app.get('/logout', userController.logout);

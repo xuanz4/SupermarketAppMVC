@@ -56,9 +56,9 @@
                   <td><%= u.address || '-' %></td>
                   <td class="text-center">
                     <div class="d-flex justify-content-center gap-2">
-                      <a class="btn btn-outline-primary btn-sm" href="/admin/users/<%= u.id %>/edit">Edit role</a>
+                      <a class="btn btn-primary btn-sm fw-semibold" href="/admin/users/<%= u.id %>/edit">Edit role</a>
                       <form action="/admin/users/<%= u.id %>/delete" method="POST" onsubmit="return confirm(<%- JSON.stringify('Delete ' + u.username + '? This action cannot be undone.') %>);">
-                        <button type="submit" class="btn btn-outline-danger btn-sm" <%= user && user.id === u.id ? 'disabled title=\"You cannot delete your own account.\"' : 'title=\"Delete this user\"' %>>
+                        <button type="submit" class="btn btn-danger btn-sm fw-semibold" <%= user && user.id === u.id ? 'disabled title=\"You cannot delete your own account.\"' : 'title=\"Delete this user\"' %>>
                           Delete
                         </button>
                       </form>

@@ -1,6 +1,9 @@
 const Order = require('../models/order');
 const User = require('../models/user');
 const cartStore = require('../models/cartStorage');
+const Payment = require('../models/payment');
+const RefundRequest = require('../models/refundRequest');
+const Wallet = require('../models/wallet');
 
 const DELIVERY_FEE = 1.5;
 const ALLOWED_STATUSES = ['processing', 'dispatched', 'delivered'];
@@ -191,15 +194,23 @@ const showPayment = (req, res) => {
         lineTotal: Number((Number(item.price) * Number(item.quantity)).toFixed(2))
     }));
 
-    res.render('payment', {
-        user: req.session.user,
-        cart: decoratedCart,
-        itemsTotal: Number(itemsTotal.toFixed(2)),
-        deliveryFee: Number(pending.deliveryFee || 0),
-        pending,
-        totalWithFees: Number((itemsTotal + (Number(pending.deliveryFee || 0))).toFixed(2)),
-        messages: req.flash('success'),
-        errors: req.flash('error')
+    Wallet.getBalance(req.session.user.id, (balanceErr, walletBalance) => {
+        if (balanceErr) {
+            console.error('Error fetching wallet balance:', balanceErr);
+        }
+
+        res.render('payment', {
+            user: req.session.user,
+            cart: decoratedCart,
+            itemsTotal: Number(itemsTotal.toFixed(2)),
+            deliveryFee: Number(pending.deliveryFee || 0),
+            pending,
+            totalWithFees: Number((itemsTotal + (Number(pending.deliveryFee || 0))).toFixed(2)),
+            paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+            walletBalance: Number(walletBalance || 0),
+            messages: req.flash('success'),
+            errors: req.flash('error')
+        });
     });
 };
 
@@ -231,14 +242,61 @@ const checkout = (req, res) => {
         return res.redirect('/payment');
     }
 
-    const paymentMethod = ['card', 'paynow', 'cash'].includes(req.body.paymentMethod) ? req.body.paymentMethod : 'card';
+    const paymentMethod = ['paynow', 'cash', 'paypal', 'nets', 'wallet'].includes(req.body.paymentMethod)
+        ? req.body.paymentMethod
+        : 'paypal';
 
-    if (paymentMethod === 'card') {
-        const { cardName, cardNumber, expiry, cvv } = req.body;
-        if (!cardName || !cardNumber || !expiry || !cvv) {
-            req.flash('error', 'Please fill in all card details.');
-            return res.redirect('/payment');
-        }
+    if (paymentMethod === 'paypal') {
+        req.flash('error', 'Please complete the PayPal payment using the PayPal button.');
+        return res.redirect('/payment');
+    }
+
+    if (paymentMethod === 'nets') {
+        req.flash('error', 'Please generate the NETS QR code to continue.');
+        return res.redirect('/payment');
+    }
+
+    if (paymentMethod === 'wallet') {
+        const deliveryFee = pending ? Number(pending.deliveryFee || 0) : computeDeliveryFee(req.session.user, deliveryMethod);
+
+        return Order.createWithWallet(req.session.user.id, cartItems, {
+            deliveryMethod,
+            deliveryAddress,
+            deliveryFee
+        }, (walletErr, result) => {
+            if (walletErr) {
+                req.flash('error', walletErr.message || 'Unable to use wallet balance.');
+                return res.redirect('/payment');
+            }
+
+            if (result && result.orderId) {
+                Payment.create(result.orderId, {
+                    provider: 'wallet',
+                    status: 'paid',
+                    amount: Number(result.total || 0),
+                    currency: 'SGD',
+                    providerRef: `wallet:${req.session.user.id}`
+                }, (paymentErr) => {
+                    if (paymentErr) {
+                        console.error('Error saving wallet payment:', paymentErr);
+                    }
+                });
+            }
+
+            req.session.cart = [];
+            req.session.pendingCheckout = null;
+            if (req.session.user) {
+                req.session.user.wallet_balance = Number(result.walletBalance || 0);
+                cartStore.save(req.session.user.id, [], (clearErr) => {
+                    if (clearErr) {
+                        console.error('Error clearing persisted cart after wallet checkout:', clearErr);
+                    }
+                });
+            }
+
+            req.flash('success', 'Thanks for your purchase! Wallet payment recorded.');
+            return res.redirect('/orders/history');
+        });
     }
 
     const deliveryFee = pending ? Number(pending.deliveryFee || 0) : computeDeliveryFee(req.session.user, deliveryMethod);
@@ -362,12 +420,44 @@ const listAllDeliveries = (req, res) => {
                 itemsByOrder[item.order_id].push(item);
             });
 
-            res.render('adminDeliveries', {
-                user: req.session.user,
-                orders,
-                orderItems: itemsByOrder,
-                messages: req.flash('success'),
-                errors: req.flash('error')
+            Payment.findByOrderIds(orderIds, (paymentErr, paymentRows) => {
+                if (paymentErr) {
+                    console.error('Error fetching payments:', paymentErr);
+                }
+
+                const paymentByOrder = (paymentRows || []).reduce((acc, payment) => {
+                    if (!acc[payment.order_id]) {
+                        acc[payment.order_id] = payment;
+                    }
+                    return acc;
+                }, {});
+
+                RefundRequest.findByOrderIds(orderIds, (refundErr, refundRows) => {
+                    if (refundErr) {
+                        console.error('Error fetching refund requests:', refundErr);
+                    }
+
+                    const refundByOrder = (refundRows || []).reduce((acc, request) => {
+                        if (!acc[request.order_id]) {
+                            acc[request.order_id] = request;
+                        }
+                        return acc;
+                    }, {});
+
+                    const ordersWithPayments = orders.map((order) => ({
+                        ...order,
+                        payment: paymentByOrder[order.id] || null,
+                        refundRequest: refundByOrder[order.id] || null
+                    }));
+
+                    res.render('adminDeliveries', {
+                        user: req.session.user,
+                        orders: ordersWithPayments,
+                        orderItems: itemsByOrder,
+                        messages: req.flash('success'),
+                        errors: req.flash('error')
+                    });
+                });
             });
         });
     });
@@ -475,6 +565,56 @@ const deleteOrder = (req, res) => {
     });
 };
 
+const submitRefundRequest = (req, res) => {
+    const orderId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(orderId)) {
+        req.flash('error', 'Invalid order selected.');
+        return res.redirect('/orders/history');
+    }
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        req.flash('error', 'Only shoppers can request refunds.');
+        return res.redirect('/orders/history');
+    }
+
+    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason) {
+        req.flash('error', 'Please provide a reason for the refund request.');
+        return res.redirect('/orders/history');
+    }
+
+    Order.findById(orderId, (orderErr, orderRows) => {
+        if (orderErr) {
+            console.error('Error fetching order for refund request:', orderErr);
+            req.flash('error', 'Unable to submit refund request.');
+            return res.redirect('/orders/history');
+        }
+
+        const order = orderRows && orderRows[0];
+        if (!order || order.user_id !== req.session.user.id) {
+            req.flash('error', 'Order not found or not yours.');
+            return res.redirect('/orders/history');
+        }
+
+        const imagePath = req.file ? `/uploads/refunds/${req.file.filename}` : null;
+
+        RefundRequest.create(orderId, req.session.user.id, {
+            reason: reason.slice(0, 500),
+            imagePath,
+            status: 'pending'
+        }, (createErr) => {
+            if (createErr) {
+                console.error('Error creating refund request:', createErr);
+                req.flash('error', 'Unable to submit refund request right now.');
+                return res.redirect('/orders/history');
+            }
+
+            req.flash('success', 'Refund request submitted.');
+            return res.redirect('/orders/history');
+        });
+    });
+};
+
 module.exports = {
     showCheckout,
     startPayment,
@@ -483,7 +623,8 @@ module.exports = {
     history,
     listAllDeliveries,
     updateDeliveryDetails,
-    deleteOrder
+    deleteOrder,
+    submitRefundRequest
 };
 
 

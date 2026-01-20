@@ -8,7 +8,7 @@
           <p class="mb-1 text-muted">Your account</p>
           <h2 class="mb-0">Purchase history</h2>
         </div>
-        <a href="/shopping" class="btn btn-primary">Continue shopping</a>
+        <a href="/shopping" class="btn btn-primary fw-semibold">Continue shopping</a>
       </div>
 
       <% if (messages && messages.length) { %>
@@ -27,7 +27,7 @@
         <div class="empty-state">
           <h3>No purchases yet</h3>
           <p class="text-muted">Browse the catalogue and start building your basket.</p>
-          <a href="/shopping" class="btn btn-primary">Discover products</a>
+          <a href="/shopping" class="btn btn-primary fw-semibold">Discover products</a>
         </div>
       <% } else { %>
         <div class="accordion" id="order-history">
@@ -124,7 +124,27 @@
                           <small class="text-muted">Required if delivery is selected. Pickup orders can leave this blank.</small>
                         </div>
                         <div class="col-12 d-flex justify-content-end">
-                          <button type="submit" class="btn btn-outline-primary btn-sm">Save delivery changes</button>
+                          <button type="submit" class="btn btn-primary btn-sm fw-semibold">Save delivery changes</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+
+                  <div class="card mt-3">
+                    <div class="card-body">
+                      <h5 class="mb-2">Request a refund</h5>
+                      <p class="text-muted mb-3">Tell us what went wrong. You can attach a photo if helpful.</p>
+                      <form action="/orders/<%= order.id %>/refund-request" method="POST" enctype="multipart/form-data" class="row gy-3">
+                        <div class="col-12">
+                          <label class="form-label">Reason</label>
+                          <textarea name="reason" class="form-control" rows="3" maxlength="500" placeholder="Describe the issue with this order" required></textarea>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <label class="form-label">Photo (optional)</label>
+                          <input type="file" name="refundImage" class="form-control" accept="image/*">
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                          <button type="submit" class="btn btn-danger fw-semibold">Submit refund request</button>
                         </div>
                       </form>
                     </div>
@@ -166,7 +186,7 @@
                     <% if (item.offerMessage) { %>
                       <p class="text-muted small mb-2"><%= item.offerMessage %></p>
                     <% } %>
-                    <a href="/product/<%= item.id %>" class="btn btn-outline-primary btn-sm">Shop now</a>
+                    <a href="/product/<%= item.id %>" class="btn btn-primary btn-sm fw-semibold">Shop now</a>
                   </div>
                 </div>
               </div>

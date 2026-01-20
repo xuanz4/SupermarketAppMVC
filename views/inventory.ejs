@@ -13,7 +13,7 @@
           </div>
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <span class="pill-soft">Total products: <strong><%= products.length %></strong></span>
-            <a href="/addProduct" class="btn btn-secondary">+ Add product</a>
+            <a href="/addProduct" class="btn btn-secondary fw-semibold">+ Add product</a>
           </div>
         </div>
 
@@ -48,8 +48,8 @@
             </div>
           </div>
           <div class="col-12 d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Apply filters</button>
-            <a href="/inventory" class="btn btn-soft">Reset</a>
+            <button type="submit" class="btn btn-primary fw-semibold">Apply filters</button>
+            <a href="/inventory" class="btn btn-secondary fw-semibold">Reset</a>
           </div>
         </form>
       </div>
@@ -118,8 +118,8 @@
                     </td>
                     <td class="text-center">
                       <div class="d-flex justify-content-center gap-2">
-                        <a href="/updateProduct/<%= product.id %>" class="btn btn-outline-primary btn-sm">Edit</a>
-                        <a href="/deleteProduct/<%= product.id %>" class="btn btn-outline-danger btn-sm" onclick="return confirm('Delete this product?')">Delete</a>
+                        <a href="/updateProduct/<%= product.id %>" class="btn btn-primary btn-sm fw-semibold">Edit</a>
+                        <a href="/deleteProduct/<%= product.id %>" class="btn btn-danger btn-sm fw-semibold" onclick="return confirm('Delete this product?')">Delete</a>
                       </div>
                     </td>
                   </tr>

@@ -87,25 +87,44 @@ a {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+  background: linear-gradient(135deg, #2f7bff, #31d3c6);
   border: none;
   border-radius: 0.85rem;
   padding: 0.8rem 1.5rem;
   font-weight: 700;
   color: #fff;
-  box-shadow: 0 12px 28px rgba(79, 141, 245, 0.2);
+  box-shadow: 0 12px 28px rgba(47, 123, 255, 0.28);
+}
+
+.btn,
+.btn-sm,
+.btn-lg {
+  border-radius: 0.85rem;
 }
 
 .btn-secondary {
-  background: linear-gradient(135deg, var(--accent-2), #f6ba70);
+  background: linear-gradient(135deg, #ff9f2f, #ffd56a);
   border: none;
-  color: #5c3200;
+  color: #5b2b00;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #ffb000, #ffe16a);
+  border: none;
+  color: #5b2b00;
 }
 
 .btn-success {
-  background: linear-gradient(135deg, #36c8a2, var(--accent-3));
+  background: linear-gradient(135deg, #19d58f, #35e5d5);
   border: none;
-  color: #0c3c2f;
+  color: #04352c;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ff3b3b, #ff7a7a);
+  border: none;
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(255, 59, 59, 0.28);
 }
 
 .btn-outline-danger {
@@ -124,6 +143,10 @@ a {
   border-radius: 0.85rem;
   font-weight: 600;
   padding: 0.75rem 1.4rem;
+}
+
+.btn-sm {
+  padding: 0.5rem 1rem;
 }
 
 .btn-soft {

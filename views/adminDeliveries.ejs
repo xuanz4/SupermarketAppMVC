@@ -98,7 +98,7 @@
                                       <tr>
                                         <th scope="col">Product</th>
                                         <th scope="col" class="text-center">Qty</th>
-                                        <th scope="col" class="text-end">Price</th>
+                                        <th scope="col" class="text-end">Total</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -106,7 +106,7 @@
                                         <tr>
                                           <td><%= item.productName %></td>
                                           <td class="text-center"><%= item.quantity %></td>
-                                          <td class="text-end">$<%= Number(item.price).toFixed(2) %></td>
+                                          <td class="text-end">$<%= (Number(item.price) * Number(item.quantity)).toFixed(2) %></td>
                                         </tr>
                                       <% }); %>
                                     </tbody>
@@ -157,14 +157,55 @@
                                   </small>
                                 </div>
                                 <div class="col-12 d-flex justify-content-end gap-2">
-                                  <button type="submit" class="btn btn-outline-primary">Save changes</button>
+                                  <button type="submit" class="btn btn-primary btn-lg fw-semibold">Save changes</button>
                                 </div>
                               </form>
-                              <form action="/orders/<%= order.id %>/delete" method="POST" class="mt-2 d-flex justify-content-end">
-                                <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Delete order #<%= order.id %>? This cannot be undone.');">
-                                  Delete order
-                                </button>
-                              </form>
+                              <div class="border-top pt-3 mt-3">
+                                <h6 class="mb-2">Payment</h6>
+                                <% if (order.payment) { %>
+                                  <p class="mb-2 text-muted">
+                                    <span class="fw-semibold text-dark"><%= (order.payment.provider || 'unknown').toUpperCase() %></span>
+                                    <span class="ms-2 badge <%= order.payment.status === 'refunded' ? 'bg-warning-subtle text-warning' : 'bg-success-subtle text-success' %>">
+                                      <%= order.payment.status %>
+                                    </span>
+                                    <span class="ms-2">$<%= Number(order.payment.amount || 0).toFixed(2) %> <%= order.payment.currency || 'SGD' %></span>
+                                  </p>
+                                  <% if (order.payment.status === 'paid') { %>
+                                    <span class="text-muted">Ready for refund.</span>
+                                  <% } %>
+                                <% } else { %>
+                                  <p class="text-muted mb-0">No payment record for this order.</p>
+                                <% } %>
+                              </div>
+                              <div class="border-top pt-3 mt-3">
+                                <h6 class="mb-2">Refund request</h6>
+                                <% if (order.refundRequest) { %>
+                                  <p class="mb-2 text-muted">
+                                    <span class="fw-semibold text-dark text-uppercase"><%= order.refundRequest.status || 'pending' %></span>
+                                    <span class="ms-2"><%= new Date(order.refundRequest.created_at).toLocaleString() %></span>
+                                  </p>
+                                  <p class="mb-2"><%= order.refundRequest.reason %></p>
+                                  <% if (order.refundRequest.image_path) { %>
+                                    <a class="btn btn-secondary btn-sm fw-semibold" href="<%= order.refundRequest.image_path %>" target="_blank" rel="noopener">View photo</a>
+                                  <% } %>
+                                <% } else { %>
+                                  <p class="text-muted mb-0">No refund request for this order.</p>
+                                <% } %>
+                              </div>
+                              <div class="d-flex justify-content-end gap-2 mt-3">
+                                <% if (order.payment && order.payment.status === 'paid') { %>
+                                  <form action="/payments/<%= order.id %>/refund" method="POST">
+                                    <button type="submit" class="btn btn-warning btn-lg fw-semibold" onclick="return confirm('Refund order #<%= order.id %>? This will issue a full refund.');">
+                                      Issue refund
+                                    </button>
+                                  </form>
+                                <% } %>
+                                <form action="/orders/<%= order.id %>/delete" method="POST">
+                                  <button type="submit" class="btn btn-danger btn-lg fw-semibold" onclick="return confirm('Delete order #<%= order.id %>? This cannot be undone.');">
+                                    Delete order
+                                  </button>
+                                </form>
+                              </div>
                             </div>
                           </div>
                         </div>
