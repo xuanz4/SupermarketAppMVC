@@ -207,6 +207,7 @@ const showPayment = (req, res) => {
             pending,
             totalWithFees: Number((itemsTotal + (Number(pending.deliveryFee || 0))).toFixed(2)),
             paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+            stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
             walletBalance: Number(walletBalance || 0),
             messages: req.flash('success'),
             errors: req.flash('error')
@@ -242,7 +243,7 @@ const checkout = (req, res) => {
         return res.redirect('/payment');
     }
 
-    const paymentMethod = ['paynow', 'cash', 'paypal', 'nets', 'wallet'].includes(req.body.paymentMethod)
+    const paymentMethod = ['paypal', 'nets', 'wallet', 'stripe', 'stripe_paynow'].includes(req.body.paymentMethod)
         ? req.body.paymentMethod
         : 'paypal';
 
@@ -256,6 +257,15 @@ const checkout = (req, res) => {
         return res.redirect('/payment');
     }
 
+    if (paymentMethod === 'stripe') {
+        req.flash('error', 'Please complete the Stripe payment.');
+        return res.redirect('/payment');
+    }
+
+    if (paymentMethod === 'stripe_paynow') {
+        req.flash('error', 'Please complete the Stripe PayNow payment.');
+        return res.redirect('/payment');
+    }
     if (paymentMethod === 'wallet') {
         const deliveryFee = pending ? Number(pending.deliveryFee || 0) : computeDeliveryFee(req.session.user, deliveryMethod);
 
@@ -317,7 +327,7 @@ const checkout = (req, res) => {
                 }
             });
         }
-        const paymentCopy = paymentMethod === 'paynow' ? 'Payment via PayNow recorded.' : (paymentMethod === 'cash' ? 'Cash on delivery/pickup selected.' : 'Card payment recorded.');
+        const paymentCopy = 'Payment recorded.';
         req.flash('success', `Thanks for your purchase! ${paymentCopy} ${deliveryMethod === 'delivery' ? 'We will deliver your order shortly.' : 'Pickup details will be shared soon.'}`);
         return res.redirect('/orders/history');
     });
@@ -372,18 +382,50 @@ const history = (req, res) => {
                 itemsByOrder[item.order_id].push(item);
             });
 
-            Order.getBestSellers(4, (bestErr, bestRows) => {
-                if (bestErr) {
-                    console.error('Error fetching best sellers:', bestErr);
+            Payment.findByOrderIds(orderIds, (paymentErr, paymentRows) => {
+                if (paymentErr) {
+                    console.error('Error fetching payments:', paymentErr);
                 }
 
-                res.render('orderHistory', {
-                    user: req.session.user,
-                    orders,
-                    orderItems: itemsByOrder,
-                    bestSellers: (bestRows || []).map(decorateProduct),
-                    messages: req.flash('success'),
-                    errors: req.flash('error')
+                const paymentByOrder = (paymentRows || []).reduce((acc, payment) => {
+                    if (!acc[payment.order_id]) {
+                        acc[payment.order_id] = payment;
+                    }
+                    return acc;
+                }, {});
+
+                RefundRequest.findByOrderIds(orderIds, (refundErr, refundRows) => {
+                    if (refundErr) {
+                        console.error('Error fetching refund requests:', refundErr);
+                    }
+
+                    const refundByOrder = (refundRows || []).reduce((acc, request) => {
+                        if (!acc[request.order_id]) {
+                            acc[request.order_id] = request;
+                        }
+                        return acc;
+                    }, {});
+
+                    const ordersWithRefunds = orders.map((order) => ({
+                        ...order,
+                        payment: paymentByOrder[order.id] || null,
+                        refundRequest: refundByOrder[order.id] || null
+                    }));
+
+                    Order.getBestSellers(4, (bestErr, bestRows) => {
+                        if (bestErr) {
+                            console.error('Error fetching best sellers:', bestErr);
+                        }
+
+                        res.render('orderHistory', {
+                            user: req.session.user,
+                            orders: ordersWithRefunds,
+                            orderItems: itemsByOrder,
+                            bestSellers: (bestRows || []).map(decorateProduct),
+                            messages: req.flash('success'),
+                            errors: req.flash('error')
+                        });
+                    });
                 });
             });
         });
@@ -592,16 +634,25 @@ const showRefundPage = (req, res) => {
             return res.redirect('/orders/history');
         }
 
-        Order.findItemsByOrderIds([order.id], (itemsErr, itemRows) => {
-            if (itemsErr) {
-                console.error('Error fetching order items for refund page:', itemsErr);
+        RefundRequest.findByOrderId(order.id, (refundErr, refundRows) => {
+            if (refundErr) {
+                console.error('Error fetching refund request:', refundErr);
             }
-            res.render('refundRequestPage', {
-                user: req.session.user,
-                order,
-                items: itemRows || [],
-                messages: req.flash('success'),
-                errors: req.flash('error')
+
+            const existingRequest = refundRows && refundRows[0] ? refundRows[0] : null;
+
+            Order.findItemsByOrderIds([order.id], (itemsErr, itemRows) => {
+                if (itemsErr) {
+                    console.error('Error fetching order items for refund page:', itemsErr);
+                }
+                res.render('refundRequestPage', {
+                    user: req.session.user,
+                    order,
+                    items: itemRows || [],
+                    refundRequest: existingRequest,
+                    messages: req.flash('success'),
+                    errors: req.flash('error')
+                });
             });
         });
     });
@@ -683,21 +734,36 @@ const submitRefundRequest = (req, res) => {
             return res.redirect('/orders/history');
         }
 
-        const imagePath = req.file ? `/uploads/refunds/${req.file.filename}` : null;
-
-        RefundRequest.create(orderId, req.session.user.id, {
-            reason: reason.slice(0, 500),
-            imagePath,
-            status: 'pending'
-        }, (createErr) => {
-            if (createErr) {
-                console.error('Error creating refund request:', createErr);
-                req.flash('error', 'Unable to submit refund request right now.');
+        RefundRequest.findByOrderId(orderId, (refundErr, refundRows) => {
+            if (refundErr) {
+                console.error('Error checking refund request:', refundErr);
+                req.flash('error', 'Unable to submit refund request.');
                 return res.redirect('/orders/history');
             }
 
-            req.flash('success', 'Refund request submitted.');
-            return res.redirect('/orders/history');
+            const existingRequest = refundRows && refundRows[0] ? refundRows[0] : null;
+            if (existingRequest) {
+                const statusLabel = (existingRequest.status || 'pending').toUpperCase();
+                req.flash('error', `Refund request already submitted (${statusLabel}).`);
+                return res.redirect('/orders/history');
+            }
+
+            const imagePath = req.file ? `/uploads/refunds/${req.file.filename}` : null;
+
+            RefundRequest.create(orderId, req.session.user.id, {
+                reason: reason.slice(0, 500),
+                imagePath,
+                status: 'pending'
+            }, (createErr) => {
+                if (createErr) {
+                    console.error('Error creating refund request:', createErr);
+                    req.flash('error', 'Unable to submit refund request right now.');
+                    return res.redirect('/orders/history');
+                }
+
+                req.flash('success', 'Refund request submitted.');
+                return res.redirect('/orders/history');
+            });
         });
     });
 };

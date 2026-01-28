@@ -23,12 +23,16 @@
             <form action="/payment/confirm" method="POST" class="d-flex flex-column gap-3" id="payment-form">
               <div class="d-flex flex-wrap gap-3">
                 <div class="form-check">
-                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-paynow" value="paynow">
-                  <label class="form-check-label fw-semibold" for="pay-paynow">PayNow</label>
-                </div>
-                <div class="form-check">
                   <input class="form-check-input" type="radio" name="paymentMethod" id="pay-paypal" value="paypal" checked>
                   <label class="form-check-label fw-semibold" for="pay-paypal">PayPal</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-stripe" value="stripe">
+                  <label class="form-check-label fw-semibold" for="pay-stripe">Stripe</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="paymentMethod" id="pay-stripe-paynow" value="stripe_paynow">
+                  <label class="form-check-label fw-semibold" for="pay-stripe-paynow">Stripe PayNow (QR)</label>
                 </div>
                 <div class="form-check">
                   <input class="form-check-input" type="radio" name="paymentMethod" id="pay-nets" value="nets">
@@ -44,21 +48,6 @@
                 </div>
               </div>
 
-              <div class="payment-section d-none" data-payment="paynow">
-                <div class="alert alert-info mb-2">
-                  <div class="fw-semibold mb-1">PayNow</div>
-                  <div class="small mb-0">Scan to pay or send to mobile: <strong>88334430</strong>.</div>
-                </div>
-                <div class="card border-0 shadow-sm">
-                  <div class="card-body text-center">
-                    <div class="ratio ratio-1x1" style="max-width: 280px; margin: 0 auto;">
-                      <img src="/images/paynow.jpg" alt="PayNow QR" class="img-fluid rounded">
-                    </div>
-                    <small class="text-muted d-block mt-2">Show this QR to complete PayNow payment.</small>
-                  </div>
-                </div>
-              </div>
-
               <div class="payment-section d-none" data-payment="paypal">
                 <% if (paypalClientId) { %>
                   <div id="paypal-button-container"></div>
@@ -66,6 +55,38 @@
                 <% } else { %>
                   <div class="alert alert-warning mb-0">
                     PayPal is not configured. Please set your PayPal sandbox credentials.
+                  </div>
+                <% } %>
+              </div>
+
+              <div class="payment-section d-none" data-payment="stripe">
+                <% if (stripePublishableKey) { %>
+                  <div id="stripe-card-element" class="mb-3"></div>
+                  <div id="stripe-error" class="text-danger small mb-2"></div>
+                  <button type="button" id="stripe-pay-btn" class="btn btn-success btn-lg fw-semibold w-100">Pay with Stripe</button>
+                <% } else { %>
+                  <div class="alert alert-warning mb-0">
+                    Stripe is not configured. Please set your Stripe keys.
+                  </div>
+                <% } %>
+              </div>
+
+              <div class="payment-section d-none" data-payment="stripe_paynow">
+                <% if (stripePublishableKey) { %>
+                  <div class="alert alert-info mb-2">
+                    <div class="fw-semibold mb-1">Stripe PayNow</div>
+                    <div class="small mb-0">Generate a Stripe PayNow QR code to scan and pay.</div>
+                  </div>
+                  <div id="stripe-paynow-qr" class="text-center mb-3 d-none">
+                    <iframe id="stripe-paynow-frame" title="Stripe PayNow QR" class="w-100 border-0 rounded d-none" style="height: 720px; overflow: hidden;" scrolling="no"></iframe>
+                    <img id="stripe-paynow-img" src="" alt="Stripe PayNow QR" class="img-fluid rounded d-none" style="max-width: 260px;">
+                    <div class="small text-muted mt-2">Scan with your banking app to pay.</div>
+                  </div>
+                  <div id="stripe-paynow-error" class="text-danger small mb-2"></div>
+                  <div id="stripe-paynow-status" class="small text-muted">Generating PayNow QR…</div>
+                <% } else { %>
+                  <div class="alert alert-warning mb-0">
+                    Stripe is not configured. Please set your Stripe keys.
                   </div>
                 <% } %>
               </div>
@@ -155,6 +176,9 @@
 <% if (paypalClientId) { %>
   <script src="https://www.paypal.com/sdk/js?client-id=<%= paypalClientId %>&currency=SGD"></script>
 <% } %>
+<% if (stripePublishableKey) { %>
+  <script src="https://js.stripe.com/v3/"></script>
+<% } %>
 
 <script>
   (function() {
@@ -177,7 +201,7 @@
       });
 
       if (confirmButton) {
-        const hideConfirm = method === 'paypal';
+        const hideConfirm = method === 'paypal' || method === 'stripe' || method === 'stripe_paynow';
         const insufficientWallet = method === 'wallet' && Number(<%= Number(walletBalance || 0).toFixed(2) %>) < Number(<%= Number(totalWithFees || 0).toFixed(2) %>);
         confirmButton.classList.toggle('d-none', hideConfirm);
         confirmButton.disabled = hideConfirm || insufficientWallet;
@@ -191,6 +215,8 @@
       } else {
         form.setAttribute('action', defaultAction);
       }
+
+      document.dispatchEvent(new CustomEvent('payment:method', { detail: { method } }));
     }
 
     radios.forEach((radio) => {
@@ -241,5 +267,188 @@
         alert('PayPal checkout failed. Please try again.');
       }
     }).render('#paypal-button-container');
+  })();
+</script>
+
+<script>
+  (function() {
+    const stripeKey = '<%= stripePublishableKey %>';
+    if (!stripeKey || !window.Stripe) return;
+
+    const stripe = Stripe(stripeKey);
+    const elements = stripe.elements();
+    const cardElement = elements.create('card', { hidePostalCode: true });
+    const cardMount = document.getElementById('stripe-card-element');
+    const stripeButton = document.getElementById('stripe-pay-btn');
+    const stripeError = document.getElementById('stripe-error');
+
+    if (cardMount) {
+      cardElement.mount(cardMount);
+    }
+
+    if (!stripeButton) return;
+
+    stripeButton.addEventListener('click', async function() {
+      stripeButton.disabled = true;
+      if (stripeError) stripeError.textContent = '';
+
+      try {
+        const intentResponse = await fetch('/stripe/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const intentData = await intentResponse.json();
+        if (intentData.error) {
+          throw new Error(intentData.error);
+        }
+
+        const { error, paymentIntent } = await stripe.confirmCardPayment(intentData.clientSecret, {
+          payment_method: { card: cardElement }
+        });
+        if (error) {
+          throw new Error(error.message || 'Stripe payment failed.');
+        }
+
+        const confirmResponse = await fetch('/stripe/confirm-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentIntentId: paymentIntent.id })
+        });
+        const confirmData = await confirmResponse.json();
+        if (confirmData.redirect) {
+          window.location.href = confirmData.redirect;
+          return;
+        }
+        if (confirmData.error) {
+          throw new Error(confirmData.error);
+        }
+      } catch (err) {
+        if (stripeError) stripeError.textContent = err.message || 'Stripe payment failed.';
+      } finally {
+        stripeButton.disabled = false;
+      }
+    });
+  })();
+</script>
+
+<script>
+  (function() {
+    const statusEl = document.getElementById('stripe-paynow-status');
+    const qrWrapper = document.getElementById('stripe-paynow-qr');
+    const qrImg = document.getElementById('stripe-paynow-img');
+    const errorEl = document.getElementById('stripe-paynow-error');
+    const frameEl = document.getElementById('stripe-paynow-frame');
+    if (!qrWrapper) return;
+
+    let currentIntentId = null;
+    let generating = false;
+    let pollTimer = null;
+    let pollCount = 0;
+
+    async function generatePaynow() {
+      if (generating) return;
+      generating = true;
+      pollCount = 0;
+      if (errorEl) errorEl.textContent = '';
+      if (statusEl) statusEl.textContent = 'Generating PayNow QR…';
+      try {
+        const response = await fetch('/stripe/paynow/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        if (!data.qrCodeUrl && !data.qrCodeData && !data.hostedUrl) {
+          throw new Error('Stripe PayNow QR not available.');
+        }
+        currentIntentId = data.paymentIntentId;
+        if (frameEl) {
+          if (data.hostedUrl) {
+            frameEl.src = data.hostedUrl;
+            frameEl.classList.remove('d-none');
+            qrImg.classList.add('d-none');
+          } else {
+            frameEl.classList.add('d-none');
+          }
+        }
+        if (!data.hostedUrl) {
+          if (data.qrCodeUrl) {
+            qrImg.src = data.qrCodeUrl;
+          } else {
+            qrImg.src = data.qrCodeData ? ('data:image/png;base64,' + data.qrCodeData) : '';
+          }
+          qrImg.classList.remove('d-none');
+        }
+        qrWrapper.classList.remove('d-none');
+        if (statusEl) statusEl.textContent = 'Waiting for payment confirmation…';
+        startPolling();
+      } catch (err) {
+        if (errorEl) errorEl.textContent = err.message || 'Unable to create Stripe PayNow QR.';
+        if (statusEl) statusEl.textContent = 'Unable to generate PayNow QR.';
+      } finally {
+        generating = false;
+      }
+    }
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      pollTimer = setInterval(async function() {
+        pollCount += 1;
+        if (pollCount > 60) {
+          stopPolling();
+          if (statusEl) statusEl.textContent = 'Payment not completed yet.';
+          return;
+        }
+        await checkPaynowStatus();
+      }, 5000);
+    }
+
+    async function checkPaynowStatus() {
+      if (!currentIntentId) return;
+      if (errorEl) errorEl.textContent = '';
+      try {
+        const response = await fetch('/stripe/paynow/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentIntentId: currentIntentId })
+        });
+        const data = await response.json();
+        if (data.redirect) {
+          window.location.href = data.redirect;
+          return;
+        }
+        if (data.error) {
+          if (statusEl) statusEl.textContent = data.error;
+          return;
+        }
+        if (data.pending) {
+          if (statusEl) statusEl.textContent = 'Waiting for payment confirmation…';
+          return;
+        }
+      } catch (err) {
+        if (errorEl) errorEl.textContent = err.message || 'Stripe PayNow payment not completed yet.';
+      }
+    }
+
+    document.addEventListener('payment:method', (event) => {
+      if (!event.detail || event.detail.method !== 'stripe_paynow') {
+        return;
+      }
+      generatePaynow();
+    });
+
+    const selected = document.querySelector('input[name="paymentMethod"]:checked');
+    if (selected && selected.value === 'stripe_paynow') {
+      generatePaynow();
+    }
   })();
 </script>

@@ -139,12 +139,20 @@
 
                   <div class="card mt-3">
                     <div class="card-body">
-                      <div class="d-flex justify-content-between align-items-center">
+                      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
                           <h5 class="mb-0">Request a refund</h5>
                           <p class="text-muted mb-0 small">Click below to open the dedicated refund page with supporting media.</p>
                         </div>
-                        <a href="/orders/<%= order.id %>/refund" class="btn btn-danger btn-sm fw-bold">Request refund</a>
+                        <% if (order.payment && order.payment.status === 'refunded') { %>
+                          <span class="badge bg-success-subtle text-success text-uppercase">Refunded to e-wallet</span>
+                        <% } else if (order.refundRequest) { %>
+                          <span class="badge bg-warning-subtle text-warning text-uppercase">
+                            Refund <%= order.refundRequest.status || 'pending' %>
+                          </span>
+                        <% } else { %>
+                          <a href="/orders/<%= order.id %>/refund" class="btn btn-danger btn-sm fw-bold">Request refund</a>
+                        <% } %>
                       </div>
                     </div>
                   </div>
@@ -197,8 +205,6 @@
   </main>
 
 <%- include('partials/footer') %>
-
-
 
 
 

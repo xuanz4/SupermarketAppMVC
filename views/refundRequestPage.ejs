@@ -46,32 +46,46 @@
         <div class="card border-0 shadow-sm mb-3">
           <div class="card-body">
             <h5 class="mb-2">Request a refund</h5>
-            <p class="text-muted mb-3">Tell us what went wrong. You can attach a photo if helpful.</p>
-            <form action="/orders/<%= order.id %>/refund-request" method="POST" enctype="multipart/form-data" class="row gy-3">
-              <div class="col-12 col-md-6">
-                <label class="form-label">Reason category</label>
-                <select name="reasonType" class="form-select" required>
-                  <option value="">Select a reason</option>
-                  <option value="damaged">Damaged / spoiled</option>
-                  <option value="missing">Missing item</option>
-                  <option value="wrong">Wrong item delivered</option>
-                  <option value="late">Late delivery</option>
-                  <option value="other">Other</option>
-                </select>
+            <p class="text-muted mb-2">Tell us what went wrong. You can attach a photo if helpful.</p>
+            <div class="alert alert-info py-2 mb-3">
+              All refunds are credited to your e-wallet balance.
+            </div>
+            <% if (refundRequest) { %>
+              <div class="alert alert-warning mb-0">
+                Refund request already submitted.
+                <span class="fw-semibold text-uppercase ms-1"><%= refundRequest.status || 'pending' %></span>
+                <span class="text-muted ms-2"><%= new Date(refundRequest.created_at).toLocaleString() %></span>
               </div>
-              <div class="col-12">
-                <label class="form-label">Details</label>
-                <textarea name="reason" class="form-control" rows="4" maxlength="500" placeholder="Describe the issue with this order" required></textarea>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Photo (optional)</label>
-                <input type="file" name="refundImage" class="form-control" accept="image/*">
-              </div>
-              <div class="col-12 d-flex justify-content-between flex-wrap gap-2">
+              <div class="mt-3">
                 <a class="btn btn-secondary fw-semibold" href="/orders/history">Back to orders</a>
-                <button type="submit" class="btn btn-danger fw-semibold">Submit refund request</button>
               </div>
-            </form>
+            <% } else { %>
+              <form action="/orders/<%= order.id %>/refund-request" method="POST" enctype="multipart/form-data" class="row gy-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label">Reason category</label>
+                  <select name="reasonType" class="form-select" required>
+                    <option value="">Select a reason</option>
+                    <option value="damaged">Damaged / spoiled</option>
+                    <option value="missing">Missing item</option>
+                    <option value="wrong">Wrong item delivered</option>
+                    <option value="late">Late delivery</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Details</label>
+                  <textarea name="reason" class="form-control" rows="4" maxlength="500" placeholder="Describe the issue with this order" required></textarea>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label">Photo (optional)</label>
+                  <input type="file" name="refundImage" class="form-control" accept="image/*">
+                </div>
+                <div class="col-12 d-flex justify-content-between flex-wrap gap-2">
+                  <a class="btn btn-secondary fw-semibold" href="/orders/history">Back to orders</a>
+                  <button type="submit" class="btn btn-danger fw-semibold">Submit refund request</button>
+                </div>
+              </form>
+            <% } %>
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@ const Payment = require('../models/payment');
 const Wallet = require('../models/wallet');
 const paypal = require('../services/paypal');
 const netsService = require('../services/nets');
+const stripeService = require('../services/stripe');
 
 const ensureCart = (req) => {
     if (!req.session.cart) {
@@ -318,17 +319,24 @@ const showWallet = (req, res) => {
                 console.error('Error fetching wallet topups:', topupErr);
             }
 
-            const netsQr = req.session.walletNetsQr || null;
-            req.session.walletNetsQr = null;
+            Wallet.findTransactions(req.session.user.id, (txErr, transactions) => {
+                if (txErr) {
+                    console.error('Error fetching wallet transactions:', txErr);
+                }
 
-            res.render('wallet', {
-                user: req.session.user,
-                walletBalance: Number(balance || 0),
-                topups: topups || [],
-                paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
-                netsQr,
-                messages: req.flash('success'),
-                errors: req.flash('error')
+                const netsQr = req.session.walletNetsQr || null;
+                req.session.walletNetsQr = null;
+
+                res.render('wallet', {
+                    user: req.session.user,
+                    walletBalance: Number(balance || 0),
+                    topups: topups || [],
+                    transactions: transactions || [],
+                    paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+                    netsQr,
+                    messages: req.flash('success'),
+                    errors: req.flash('error')
+                });
             });
         });
     });
@@ -592,6 +600,261 @@ const confirmNetsPayment = (req, res) => {
     });
 };
 
+const createStripePaymentIntent = async (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        return res.status(403).json({ error: 'Only shoppers can make payments.' });
+    }
+
+    const pending = req.session.pendingCheckout;
+    if (!pending) {
+        return res.status(400).json({ error: 'Please confirm delivery details first.' });
+    }
+
+    const cartItems = req.session.cart || [];
+    if (!cartItems.length) {
+        return res.status(400).json({ error: 'Your cart is empty.' });
+    }
+
+    const { totalWithFees } = calculateTotals(cartItems, pending.deliveryFee || 0);
+    const amountCents = Math.round(Number(totalWithFees) * 100);
+
+    try {
+        const intent = await stripeService.createPaymentIntent(amountCents, 'sgd');
+        return res.json({ clientSecret: intent.client_secret, paymentIntentId: intent.id });
+    } catch (error) {
+        console.error('Error creating Stripe payment intent:', error);
+        return res.status(500).json({ error: 'Unable to create Stripe payment intent.' });
+    }
+};
+
+const confirmStripeOrder = async (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        return res.status(403).json({ error: 'Only shoppers can make payments.' });
+    }
+
+    const pending = req.session.pendingCheckout;
+    if (!pending) {
+        return res.status(400).json({ error: 'Please confirm delivery details first.' });
+    }
+
+    const cartItems = req.session.cart || [];
+    if (!cartItems.length) {
+        return res.status(400).json({ error: 'Your cart is empty.' });
+    }
+
+    const { paymentIntentId } = req.body || {};
+    if (!paymentIntentId) {
+        return res.status(400).json({ error: 'Missing Stripe payment intent.' });
+    }
+
+    const { totalWithFees } = calculateTotals(cartItems, pending.deliveryFee || 0);
+    const expectedCents = Math.round(Number(totalWithFees) * 100);
+
+    try {
+        const intent = await stripeService.retrievePaymentIntent(paymentIntentId);
+        if (!intent || intent.status !== 'succeeded') {
+            return res.status(400).json({ error: 'Stripe payment not completed.' });
+        }
+
+        if (intent.amount_received !== expectedCents) {
+            return res.status(400).json({ error: 'Stripe amount mismatch.' });
+        }
+
+        Order.create(req.session.user.id, cartItems, {
+            deliveryMethod: pending.deliveryMethod,
+            deliveryAddress: pending.deliveryAddress,
+            deliveryFee: Number(pending.deliveryFee || 0)
+        }, (error, orderResult) => {
+            if (error) {
+                console.error('Error during Stripe checkout:', error);
+                return res.status(500).json({ error: 'Unable to complete checkout. Please try again.' });
+            }
+
+            if (orderResult && orderResult.orderId) {
+                Payment.create(orderResult.orderId, {
+                    provider: 'stripe',
+                    status: 'paid',
+                    amount: Number(totalWithFees),
+                    currency: 'SGD',
+                    providerRef: paymentIntentId
+                }, (paymentErr) => {
+                    if (paymentErr) {
+                        console.error('Error saving Stripe payment:', paymentErr);
+                    }
+                });
+            }
+
+            req.session.cart = [];
+            req.session.pendingCheckout = null;
+            if (req.session.user) {
+                cartStore.save(req.session.user.id, [], (clearErr) => {
+                    if (clearErr) {
+                        console.error('Error clearing persisted cart after Stripe checkout:', clearErr);
+                    }
+                });
+            }
+
+            return res.json({ success: true, redirect: '/orders/history' });
+        });
+    } catch (error) {
+        console.error('Error confirming Stripe payment:', error);
+        return res.status(500).json({ error: 'Unable to confirm Stripe payment.' });
+    }
+};
+
+const createStripePaynow = async (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        return res.status(403).json({ error: 'Only shoppers can make payments.' });
+    }
+
+    const pending = req.session.pendingCheckout;
+    if (!pending) {
+        return res.status(400).json({ error: 'Please confirm delivery details first.' });
+    }
+
+    const cartItems = req.session.cart || [];
+    if (!cartItems.length) {
+        return res.status(400).json({ error: 'Your cart is empty.' });
+    }
+
+    const { totalWithFees } = calculateTotals(cartItems, pending.deliveryFee || 0);
+    const amountCents = Math.round(Number(totalWithFees) * 100);
+    const returnUrl = `${req.protocol}://${req.get('host')}/orders/history`;
+
+    try {
+        const intent = await stripeService.createPaynowIntent(amountCents, returnUrl);
+        req.session.stripePaynow = {
+            paymentIntentId: intent.id,
+            total: totalWithFees.toFixed(2)
+        };
+        const nextAction = intent.next_action || {};
+        let qrPayload = null;
+        let hostedUrl = null;
+
+        if (nextAction.display_qr_code) {
+            qrPayload = nextAction.display_qr_code;
+            hostedUrl = nextAction.display_qr_code.hosted_instructions_url || null;
+        } else if (nextAction.paynow_display_qr_code) {
+            qrPayload = nextAction.paynow_display_qr_code;
+            hostedUrl = nextAction.paynow_display_qr_code.hosted_instructions_url || null;
+        } else if (nextAction.redirect_to_url && nextAction.redirect_to_url.url) {
+            hostedUrl = nextAction.redirect_to_url.url;
+        } else {
+            const qrKey = Object.keys(nextAction).find((key) => (
+                key.includes('display_qr_code') || key.includes('handle_redirect_or_display_qr_code')
+            ));
+            if (qrKey && nextAction[qrKey]) {
+                const payload = nextAction[qrKey];
+                qrPayload = payload.qr_code || payload.display_qr_code || payload;
+                hostedUrl = payload.hosted_instructions_url || payload?.qr_code?.hosted_instructions_url || null;
+            }
+        }
+
+        return res.json({
+            paymentIntentId: intent.id,
+            status: intent.status,
+            nextActionType: nextAction.type || null,
+            hostedUrl,
+            qrCodeUrl: qrPayload
+                ? (qrPayload.image_url || qrPayload.image_url_png || qrPayload.image_url_svg || null)
+                : null,
+            qrCodeData: qrPayload
+                ? (qrPayload.image_data || null)
+                : null
+        });
+    } catch (error) {
+        console.error('Error creating Stripe PayNow intent:', error);
+        return res.status(500).json({ error: 'Unable to create Stripe PayNow payment.' });
+    }
+};
+
+const confirmStripePaynowOrder = async (req, res) => {
+    ensureCart(req);
+
+    if (!req.session.user || req.session.user.role !== 'user') {
+        return res.status(403).json({ error: 'Only shoppers can make payments.' });
+    }
+
+    const pending = req.session.pendingCheckout;
+    if (!pending) {
+        return res.status(400).json({ error: 'Please confirm delivery details first.' });
+    }
+
+    const cartItems = req.session.cart || [];
+    if (!cartItems.length) {
+        return res.status(400).json({ error: 'Your cart is empty.' });
+    }
+
+    const { paymentIntentId } = req.body || {};
+    if (!paymentIntentId) {
+        return res.status(400).json({ error: 'Missing Stripe PayNow intent.' });
+    }
+
+    const sessionIntent = req.session.stripePaynow;
+    if (!sessionIntent || sessionIntent.paymentIntentId !== paymentIntentId) {
+        return res.status(400).json({ error: 'Stripe PayNow session mismatch.' });
+    }
+
+    const { totalWithFees } = calculateTotals(cartItems, pending.deliveryFee || 0);
+    const expectedCents = Math.round(Number(totalWithFees) * 100);
+
+    try {
+        const intent = await stripeService.retrievePaymentIntent(paymentIntentId);
+        if (!intent || intent.status !== 'succeeded') {
+            return res.json({ pending: true, status: intent ? intent.status : 'unknown' });
+        }
+        if (intent.amount_received !== expectedCents) {
+            return res.status(400).json({ error: 'Stripe PayNow amount mismatch.' });
+        }
+
+        Order.create(req.session.user.id, cartItems, {
+            deliveryMethod: pending.deliveryMethod,
+            deliveryAddress: pending.deliveryAddress,
+            deliveryFee: Number(pending.deliveryFee || 0)
+        }, (error, orderResult) => {
+            if (error) {
+                console.error('Error during Stripe PayNow checkout:', error);
+                return res.status(500).json({ error: 'Unable to complete checkout. Please try again.' });
+            }
+
+            if (orderResult && orderResult.orderId) {
+                Payment.create(orderResult.orderId, {
+                    provider: 'stripe_paynow',
+                    status: 'paid',
+                    amount: Number(totalWithFees),
+                    currency: 'SGD',
+                    providerRef: paymentIntentId
+                }, (paymentErr) => {
+                    if (paymentErr) {
+                        console.error('Error saving Stripe PayNow payment:', paymentErr);
+                    }
+                });
+            }
+
+            req.session.cart = [];
+            req.session.pendingCheckout = null;
+            req.session.stripePaynow = null;
+            if (req.session.user) {
+                cartStore.save(req.session.user.id, [], (clearErr) => {
+                    if (clearErr) {
+                        console.error('Error clearing persisted cart after Stripe PayNow checkout:', clearErr);
+                    }
+                });
+            }
+
+            return res.json({ success: true, redirect: '/orders/history' });
+        });
+    } catch (error) {
+        console.error('Error confirming Stripe PayNow payment:', error);
+        return res.status(500).json({ error: 'Unable to confirm Stripe PayNow payment.' });
+    }
+};
 const refundPayment = (req, res) => {
     const orderId = parseInt(req.params.orderId, 10);
     if (!Number.isFinite(orderId)) {
@@ -617,73 +880,39 @@ const refundPayment = (req, res) => {
             return res.redirect('/admin/deliveries');
         }
 
-        try {
-            if (payment.provider === 'paypal') {
-                if (!payment.provider_ref) {
-                    req.flash('error', 'Missing PayPal capture ID.');
-                    return res.redirect('/admin/deliveries');
-                }
-                await paypal.refundCapture(payment.provider_ref);
-            } else if (payment.provider === 'nets') {
-                // NETS refund API is not wired yet; record as manual refund.
-            } else if (payment.provider === 'wallet') {
-                // Wallet refunds are credited back to the user's wallet balance.
-                return Order.findById(orderId, (orderErr, orderRows) => {
-                    if (orderErr) {
-                        console.error('Error fetching order for wallet refund:', orderErr);
-                        req.flash('error', 'Unable to process wallet refund.');
-                        return res.redirect('/admin/deliveries');
-                    }
-
-                    const order = orderRows && orderRows[0];
-                    if (!order) {
-                        req.flash('error', 'Order not found.');
-                        return res.redirect('/admin/deliveries');
-                    }
-
-                    Wallet.creditWithType(order.user_id, Number(payment.amount || 0), 'refund', `refund:order:${orderId}`, (walletErr) => {
-                        if (walletErr) {
-                            console.error('Error crediting wallet refund:', walletErr);
-                            req.flash('error', 'Unable to credit wallet refund.');
-                            return res.redirect('/admin/deliveries');
-                        }
-
-                        return Payment.markRefunded(payment.id, (markErr) => {
-                            if (markErr) {
-                                console.error('Error updating refund status:', markErr);
-                                req.flash('error', 'Refund processed but status update failed.');
-                                return res.redirect('/admin/deliveries');
-                            }
-
-                            req.flash('success', 'Wallet refund credited successfully.');
-                            return res.redirect('/admin/deliveries');
-                        });
-                    });
-                });
-            } else {
-                req.flash('error', 'Unsupported payment provider.');
+        return Order.findById(orderId, (orderErr, orderRows) => {
+            if (orderErr) {
+                console.error('Error fetching order for refund:', orderErr);
+                req.flash('error', 'Unable to process refund.');
                 return res.redirect('/admin/deliveries');
             }
 
-            Payment.markRefunded(payment.id, (markErr) => {
-                if (markErr) {
-                    console.error('Error updating refund status:', markErr);
-                    req.flash('error', 'Refund processed but status update failed.');
+            const order = orderRows && orderRows[0];
+            if (!order) {
+                req.flash('error', 'Order not found.');
+                return res.redirect('/admin/deliveries');
+            }
+
+            const refundAmount = Number(payment.amount || 0);
+            Wallet.creditWithType(order.user_id, refundAmount, 'refund', `refund:order:${orderId}`, (walletErr) => {
+                if (walletErr) {
+                    console.error('Error crediting wallet refund:', walletErr);
+                    req.flash('error', 'Unable to credit wallet refund.');
                     return res.redirect('/admin/deliveries');
                 }
 
-                const providerLabel = payment.provider === 'nets' ? 'NETS' : 'PayPal';
-                const suffix = payment.provider === 'nets'
-                    ? ' Refund marked as manual.'
-                    : '';
-                req.flash('success', `${providerLabel} refund successful.${suffix}`);
-                return res.redirect('/admin/deliveries');
+                return Payment.markRefunded(payment.id, (markErr) => {
+                    if (markErr) {
+                        console.error('Error updating refund status:', markErr);
+                        req.flash('error', 'Refund processed but status update failed.');
+                        return res.redirect('/admin/deliveries');
+                    }
+
+                    req.flash('success', 'Refund credited to customer wallet balance.');
+                    return res.redirect('/admin/deliveries');
+                });
             });
-        } catch (error) {
-            console.error('Refund error:', error);
-            req.flash('error', 'Refund failed. Please try again.');
-            return res.redirect('/admin/deliveries');
-        }
+        });
     });
 };
 
@@ -699,5 +928,9 @@ module.exports = {
     createPaypalTopupOrder,
     capturePaypalTopup,
     createNetsTopup,
-    confirmNetsTopup
+    confirmNetsTopup,
+    createStripePaymentIntent,
+    confirmStripeOrder,
+    createStripePaynow,
+    confirmStripePaynowOrder
 };

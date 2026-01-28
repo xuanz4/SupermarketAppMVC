@@ -90,6 +90,17 @@ const findByUser = (userId, callback) => {
     connection.query(sql, [userId], callback);
 };
 
+const findTransactions = (userId, callback) => {
+    const sql = `
+        SELECT id, type, amount, balance_after, reference, created_at
+        FROM wallet_transactions
+        WHERE user_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 10
+    `;
+    connection.query(sql, [userId], callback);
+};
+
 const findByProviderRef = (providerRef, callback) => {
     const sql = `
         SELECT id, user_id, provider, amount, status, provider_ref, created_at, completed_at
@@ -120,6 +131,7 @@ module.exports = {
     creditWithType,
     create,
     findByUser,
+    findTransactions,
     findByProviderRef,
     markCompleted
 };
