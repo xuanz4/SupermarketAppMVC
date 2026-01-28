@@ -1,0 +1,82 @@
+<%- include('partials/head', { pageTitle: 'Refund Request | Supermarket', bodyClass: 'bg-surface' }) %>
+<%- include('partials/topbar') %>
+
+<main class="page-section">
+  <div class="container">
+    <% if (messages && messages.length) { %>
+      <% messages.forEach(function(message) { %>
+        <div class="alert alert-success"><%= message %></div>
+      <% }); %>
+    <% } %>
+
+    <% if (errors && errors.length) { %>
+      <% errors.forEach(function(error) { %>
+        <div class="alert alert-danger"><%= error %></div>
+      <% }); %>
+    <% } %>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h3 class="mb-2">Refund for Order #<%= order.id %></h3>
+        <p class="text-muted mb-4">Total: $<%= Number(order.total || 0).toFixed(2) %> · Status: <%= (order.status || 'processing').toUpperCase() %></p>
+
+        <% if (items.length) { %>
+          <div class="table-responsive mb-4">
+            <table class="table table-borderless mb-0">
+              <thead class="text-uppercase small text-muted">
+                <tr>
+                  <th>Product</th>
+                  <th class="text-center">Qty</th>
+                  <th class="text-end">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% items.forEach(function(item) { %>
+                  <tr>
+                    <td><%= item.productName %></td>
+                    <td class="text-center"><%= item.quantity %></td>
+                    <td class="text-end">$<%= (Number(item.price) * Number(item.quantity)).toFixed(2) %></td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+
+        <div class="card border-0 shadow-sm mb-3">
+          <div class="card-body">
+            <h5 class="mb-2">Request a refund</h5>
+            <p class="text-muted mb-3">Tell us what went wrong. You can attach a photo if helpful.</p>
+            <form action="/orders/<%= order.id %>/refund-request" method="POST" enctype="multipart/form-data" class="row gy-3">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Reason category</label>
+                <select name="reasonType" class="form-select" required>
+                  <option value="">Select a reason</option>
+                  <option value="damaged">Damaged / spoiled</option>
+                  <option value="missing">Missing item</option>
+                  <option value="wrong">Wrong item delivered</option>
+                  <option value="late">Late delivery</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label">Details</label>
+                <textarea name="reason" class="form-control" rows="4" maxlength="500" placeholder="Describe the issue with this order" required></textarea>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Photo (optional)</label>
+                <input type="file" name="refundImage" class="form-control" accept="image/*">
+              </div>
+              <div class="col-12 d-flex justify-content-between flex-wrap gap-2">
+                <a class="btn btn-secondary fw-semibold" href="/orders/history">Back to orders</a>
+                <button type="submit" class="btn btn-danger fw-semibold">Submit refund request</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<%- include('partials/footer') %>

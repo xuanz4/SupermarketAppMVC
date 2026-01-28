@@ -500,7 +500,9 @@ const updateDeliveryDetails = (req, res) => {
             }
 
             const account = userRows && userRows[0];
-            const deliveryMethod = req.body.deliveryMethod === 'delivery' ? 'delivery' : 'pickup';
+            const deliveryMethod = isAdmin
+                ? (req.body.deliveryMethod === 'delivery' ? 'delivery' : 'pickup')
+                : (order.delivery_method || 'pickup');
             const statusInput = req.body.status;
             const requestedAddress = sanitiseDeliveryAddress(req.body.deliveryAddress) || (account ? account.address : null);
             const waiveFee = isAdmin && (req.body.waiveFee === 'on' || req.body.waiveFee === 'true');
@@ -565,6 +567,87 @@ const deleteOrder = (req, res) => {
     });
 };
 
+const showRefundPage = (req, res) => {
+    const orderId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(orderId)) {
+        req.flash('error', 'Invalid order selected.');
+        return res.redirect('/orders/history');
+    }
+
+    if (!req.session.user) {
+        req.flash('error', 'Please log in to request a refund.');
+        return res.redirect('/login');
+    }
+
+    Order.findById(orderId, (orderErr, orderRows) => {
+        if (orderErr) {
+            console.error('Error fetching order for refund page:', orderErr);
+            req.flash('error', 'Unable to load refund page.');
+            return res.redirect('/orders/history');
+        }
+
+        const order = orderRows && orderRows[0];
+        if (!order || order.user_id !== req.session.user.id) {
+            req.flash('error', 'Order not found.');
+            return res.redirect('/orders/history');
+        }
+
+        Order.findItemsByOrderIds([order.id], (itemsErr, itemRows) => {
+            if (itemsErr) {
+                console.error('Error fetching order items for refund page:', itemsErr);
+            }
+            res.render('refundRequestPage', {
+                user: req.session.user,
+                order,
+                items: itemRows || [],
+                messages: req.flash('success'),
+                errors: req.flash('error')
+            });
+        });
+    });
+};
+
+const showInvoicePage = (req, res) => {
+    const orderId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(orderId)) {
+        req.flash('error', 'Invalid order selected.');
+        return res.redirect('/orders/history');
+    }
+
+    if (!req.session.user) {
+        req.flash('error', 'Please log in to view invoices.');
+        return res.redirect('/login');
+    }
+
+    Order.findById(orderId, (orderErr, orderRows) => {
+        if (orderErr) {
+            console.error('Error fetching order for invoice:', orderErr);
+            req.flash('error', 'Unable to load invoice.');
+            return res.redirect('/orders/history');
+        }
+
+        const order = orderRows && orderRows[0];
+        if (!order || order.user_id !== req.session.user.id) {
+            req.flash('error', 'Order not found.');
+            return res.redirect('/orders/history');
+        }
+
+        Order.findItemsByOrderIds([order.id], (itemsErr, itemRows) => {
+            if (itemsErr) {
+                console.error('Error fetching order items for invoice:', itemsErr);
+            }
+
+            res.render('invoice', {
+                user: req.session.user,
+                order,
+                items: itemRows || [],
+                messages: req.flash('success'),
+                errors: req.flash('error')
+            });
+        });
+    });
+};
+
 const submitRefundRequest = (req, res) => {
     const orderId = parseInt(req.params.id, 10);
     if (!Number.isFinite(orderId)) {
@@ -577,7 +660,11 @@ const submitRefundRequest = (req, res) => {
         return res.redirect('/orders/history');
     }
 
-    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+    const reasonType = typeof req.body.reasonType === 'string' ? req.body.reasonType.trim() : '';
+    const reasonText = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+    const reason = reasonType
+        ? `${reasonType} – ${reasonText}`
+        : reasonText;
     if (!reason) {
         req.flash('error', 'Please provide a reason for the refund request.');
         return res.redirect('/orders/history');
@@ -624,7 +711,9 @@ module.exports = {
     listAllDeliveries,
     updateDeliveryDetails,
     deleteOrder,
-    submitRefundRequest
+    submitRefundRequest,
+    showRefundPage,
+    showInvoicePage
 };
 
 

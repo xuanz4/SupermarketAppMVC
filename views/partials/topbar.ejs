@@ -7,6 +7,7 @@
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
       <% if (user && user.role !== "admin") { %>
+        <a class="nav-chip" href="/shopping">Shop</a>
         <a class="nav-chip" href="/orders/history">Orders</a>
         <a class="nav-chip" href="/wallet">E-Wallet</a>
         <a class="nav-chip position-relative" href="/cart">

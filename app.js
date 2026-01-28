@@ -105,6 +105,8 @@ app.post('/wallet/topup/nets/create', checkAuthenticated, checkRoles('user'), pa
 app.get('/wallet/topup/nets/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmNetsTopup);
 app.get('/orders/history', checkAuthenticated, checkRoles('user'), orderController.history);
 app.post('/orders/:id/delivery', checkAuthenticated, orderController.updateDeliveryDetails);
+app.get('/orders/:id/refund', checkAuthenticated, checkRoles('user'), orderController.showRefundPage);
+app.get('/orders/:id/invoice', checkAuthenticated, checkRoles('user'), orderController.showInvoicePage);
 app.post('/orders/:id/refund-request', checkAuthenticated, checkRoles('user'), refundUpload.single('refundImage'), orderController.submitRefundRequest);
 app.post('/orders/:id/delete', checkAuthenticated, checkAdmin, orderController.deleteOrder);
 

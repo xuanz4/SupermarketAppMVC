@@ -1,0 +1,77 @@
+<%- include('partials/head', { pageTitle: 'Invoice | Supermarket', bodyClass: 'bg-surface' }) %>
+<%- include('partials/topbar') %>
+
+<main class="page-section">
+  <div class="container">
+    <% if (messages && messages.length) { %>
+      <% messages.forEach(function(message) { %>
+        <div class="alert alert-success"><%= message %></div>
+      <% }); %>
+    <% } %>
+
+    <% if (errors && errors.length) { %>
+      <% errors.forEach(function(error) { %>
+        <div class="alert alert-danger"><%= error %></div>
+      <% }); %>
+    <% } %>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+          <div>
+            <h3 class="mb-1">Invoice</h3>
+            <p class="text-muted mb-0">Order #<%= order.id %> · <%= new Date(order.created_at).toLocaleString() %></p>
+          </div>
+          <div class="text-md-end">
+            <div class="fw-semibold"><%= user.username %></div>
+            <div class="text-muted small"><%= user.email %></div>
+            <div class="text-muted small"><%= user.contact || '' %></div>
+          </div>
+        </div>
+
+        <div class="table-responsive mb-4">
+          <table class="table table-modern align-middle mb-0">
+            <thead class="text-uppercase small text-muted">
+              <tr>
+                <th>Product</th>
+                <th class="text-center">Qty</th>
+                <th class="text-end">Unit</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% items.forEach(function(item) { %>
+                <tr>
+                  <td><%= item.productName %></td>
+                  <td class="text-center"><%= item.quantity %></td>
+                  <td class="text-end">$<%= Number(item.price).toFixed(2) %></td>
+                  <td class="text-end">$<%= (Number(item.price) * Number(item.quantity)).toFixed(2) %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+          <div class="text-muted">
+            <div class="mb-1">Delivery method: <strong><%= order.delivery_method %></strong></div>
+            <% if (order.delivery_method === 'delivery') { %>
+              <div>Address: <%= order.delivery_address || 'Pending confirmation' %></div>
+            <% } %>
+          </div>
+          <div class="text-md-end">
+            <div class="mb-1">Delivery fee: $<%= Number(order.delivery_fee || 0).toFixed(2) %></div>
+            <div class="h5 mb-0">Total: $<%= Number(order.total || 0).toFixed(2) %></div>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a href="/orders/history" class="btn btn-secondary btn-sm fw-semibold">Back to orders</a>
+          <button type="button" class="btn btn-primary btn-sm fw-semibold" onclick="window.print()">Print</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<%- include('partials/footer') %>

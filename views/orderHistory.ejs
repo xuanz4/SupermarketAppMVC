@@ -82,71 +82,70 @@
 
                   <div class="card mt-3">
                     <div class="card-body">
-                      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+                      <div class="d-flex justify-content-between align-items-center mb-2">
                         <div>
                           <h5 class="mb-1">Delivery details</h5>
                           <span class="badge <%= order.delivery_method === 'delivery' ? 'bg-primary-subtle text-primary' : 'bg-light text-dark' %> text-uppercase"><%= order.delivery_method === 'delivery' ? 'Delivery' : 'Pickup' %></span>
                         </div>
-                        <div class="text-md-end small text-muted">
+                        <div class="text-muted small">
                           <% if (order.delivery_method === 'delivery') { %>
                             Fee: <%= Number(order.delivery_fee || 0) > 0 ? '$' + Number(order.delivery_fee).toFixed(2) : 'Free' %>
                           <% } else { %>
-                            No delivery fee.
+                            Pickup order
                           <% } %>
                         </div>
                       </div>
 
                       <% if (order.delivery_method === 'delivery') { %>
-                        <p class="text-muted mb-3">
+                        <p class="text-muted mb-1">
                           <strong>Address:</strong>
                           <%= order.delivery_address ? order.delivery_address : 'Pending confirmation' %>
                         </p>
                       <% } else { %>
-                        <p class="text-muted mb-3">We will notify you when your pickup is ready.</p>
+                        <p class="text-muted mb-1">We will notify you when your pickup is ready.</p>
                       <% } %>
 
-                      <form action="/orders/<%= order.id %>/delivery" method="POST" class="row gy-3">
-                        <div class="col-12 col-md-4">
-                          <label class="form-label">Update method</label>
-                          <select name="deliveryMethod" class="form-select">
-                            <option value="pickup" <%= order.delivery_method === 'pickup' ? 'selected' : '' %>>Pickup</option>
-                            <option value="delivery" <%= order.delivery_method === 'delivery' ? 'selected' : '' %>>Delivery</option>
-                          </select>
-                        </div>
-                        <div class="col-12 col-md-8">
-                          <label for="order-address-<%= order.id %>" class="form-label">Delivery address</label>
-                          <textarea
-                            id="order-address-<%= order.id %>"
-                            name="deliveryAddress"
-                            rows="2"
-                            class="form-control"
-                            placeholder="Provide address for delivery"><%= order.delivery_address || user.address || '' %></textarea>
-                          <small class="text-muted">Required if delivery is selected. Pickup orders can leave this blank.</small>
-                        </div>
-                        <div class="col-12 d-flex justify-content-end">
-                          <button type="submit" class="btn btn-primary btn-sm fw-semibold">Save delivery changes</button>
-                        </div>
-                      </form>
+                      <% if (order.delivery_method === 'delivery') { %>
+                        <form action="/orders/<%= order.id %>/delivery" method="POST" class="row gy-3 mt-2">
+                          <div class="col-12">
+                            <label for="order-address-<%= order.id %>" class="form-label">Delivery address</label>
+                            <textarea
+                              id="order-address-<%= order.id %>"
+                              name="deliveryAddress"
+                              rows="2"
+                              class="form-control"
+                              placeholder="Provide address for delivery"><%= order.delivery_address || user.address || '' %></textarea>
+                            <small class="text-muted">You can update the delivery address only.</small>
+                          </div>
+                          <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm fw-semibold">Save delivery changes</button>
+                          </div>
+                        </form>
+                      <% } %>
                     </div>
                   </div>
 
                   <div class="card mt-3">
                     <div class="card-body">
-                      <h5 class="mb-2">Request a refund</h5>
-                      <p class="text-muted mb-3">Tell us what went wrong. You can attach a photo if helpful.</p>
-                      <form action="/orders/<%= order.id %>/refund-request" method="POST" enctype="multipart/form-data" class="row gy-3">
-                        <div class="col-12">
-                          <label class="form-label">Reason</label>
-                          <textarea name="reason" class="form-control" rows="3" maxlength="500" placeholder="Describe the issue with this order" required></textarea>
+                      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                          <h5 class="mb-0">Invoice</h5>
+                          <p class="text-muted mb-0 small">View or print your invoice for this order.</p>
                         </div>
-                        <div class="col-12 col-md-6">
-                          <label class="form-label">Photo (optional)</label>
-                          <input type="file" name="refundImage" class="form-control" accept="image/*">
+                        <a href="/orders/<%= order.id %>/invoice" class="btn btn-secondary btn-sm fw-semibold">View invoice</a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card mt-3">
+                    <div class="card-body">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                          <h5 class="mb-0">Request a refund</h5>
+                          <p class="text-muted mb-0 small">Click below to open the dedicated refund page with supporting media.</p>
                         </div>
-                        <div class="col-12 d-flex justify-content-end">
-                          <button type="submit" class="btn btn-danger fw-semibold">Submit refund request</button>
-                        </div>
-                      </form>
+                        <a href="/orders/<%= order.id %>/refund" class="btn btn-danger btn-sm fw-bold">Request refund</a>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -197,13 +196,7 @@
     </div>
   </main>
 
-  <footer class="footer">
-    <div class="container">
-      <small>&copy; <%= new Date().getFullYear() %> Supermarket App</small>
-    </div>
-  </footer>
 <%- include('partials/footer') %>
-
 
 
 
