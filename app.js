@@ -92,6 +92,10 @@ app.get('/payment', checkAuthenticated, checkRoles('user'), orderController.show
 app.post('/payment/confirm', checkAuthenticated, checkRoles('user'), orderController.checkout);
 app.post('/paypal/create-order', checkAuthenticated, checkRoles('user'), paymentController.createPaypalOrder);
 app.post('/paypal/capture-order', checkAuthenticated, checkRoles('user'), paymentController.capturePaypalOrder);
+app.post('/stripe/create-payment-intent', checkAuthenticated, checkRoles('user'), paymentController.createStripePaymentIntent);
+app.post('/stripe/confirm-order', checkAuthenticated, checkRoles('user'), paymentController.confirmStripeOrder);
+app.post('/stripe/paynow/create', checkAuthenticated, checkRoles('user'), paymentController.createStripePaynow);
+app.post('/stripe/paynow/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmStripePaynowOrder);
 app.post('/nets-qr/create', checkAuthenticated, checkRoles('user'), paymentController.generateNetsQr);
 app.post('/nets-qr/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmNetsPayment);
 app.get('/nets-qr/confirm', checkAuthenticated, checkRoles('user'), paymentController.confirmNetsPayment);
